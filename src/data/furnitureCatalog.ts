@@ -50,6 +50,7 @@ export const DEFAULT_FURNITURE_CATALOG: FurnitureCatalogEntry[] = [
   { id: 'bathtub-standard', label: 'Standard tub (5×2.5)', category: 'bathtub', width: 5, depth: 2.5, height: 2, keywords: ['bathtub', 'tub', 'alcove', 'bathroom', '60'] },
   { id: 'bathtub-large', label: 'Large tub (6×3)', category: 'bathtub', width: 6, depth: 3, height: 2.5, keywords: ['bathtub', 'tub', 'soaking', 'bathroom', '72'] },
   { id: 'bathtub-corner', label: 'Corner tub (5×5)', category: 'bathtub', width: 5, depth: 5, height: 2.5, keywords: ['bathtub', 'tub', 'corner', 'bathroom'] },
+  { id: 'bathtub-corner-72', label: 'Large corner tub (6×6)', category: 'bathtub', width: 6, depth: 6, height: 2.5, keywords: ['bathtub', 'tub', 'corner', 'bathroom', '72', 'whirlpool', 'large'] },
   // Counters (24″ cabinet depth)
   { id: 'counter-base-2', label: '2′ base cabinet', category: 'counter', width: 2, depth: 2, height: 3, keywords: ['counter', 'cabinet', 'base', 'kitchen', '2'] },
   { id: 'counter-base-3', label: '3′ base cabinet', category: 'counter', width: 3, depth: 2, height: 3, keywords: ['counter', 'cabinet', 'base', 'kitchen', '3'] },
