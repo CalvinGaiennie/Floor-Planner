@@ -38,8 +38,6 @@ export function Toolbar() {
     deleteCurrentPlan,
     setPlan,
     syncError,
-    refreshFromCloud,
-    pushLocalPlansToCloud,
     firebaseProjectId,
   } = useFloorPlan()
   const { user, firebaseEnabled, signInWithGoogle, signOut, authError } = useAuth()
@@ -234,26 +232,6 @@ export function Toolbar() {
                         </span>
                       )}
                     </div>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        refreshFromCloud()
-                        setAccountMenuOpen(false)
-                      }}
-                    >
-                      Refresh from cloud
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        pushLocalPlansToCloud()
-                        setAccountMenuOpen(false)
-                      }}
-                    >
-                      Upload local to cloud
-                    </button>
                     <button
                       type="button"
                       role="menuitem"

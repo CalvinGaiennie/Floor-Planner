@@ -11,8 +11,6 @@ import {
 import { migrateLegacyRectangleRoom, sanitizePlan } from './planModel'
 import { normalizeFurnitureList } from './furniture'
 
-const STORAGE_KEY = 'floor-planner-plan-v2'
-
 type LegacyRectangleRoom = {
   id: string
   name: string
@@ -131,8 +129,6 @@ function normalizePlan(raw: LegacyPlan): FloorPlan {
   return sanitizePlan(plan)
 }
 
-const ACTIVE_PLAN_ID_KEY = 'floor-planner-active-plan-id'
-const PLANS_INDEX_KEY = 'floor-planner-plans-index'
 const MASTER_NOTE_KEY = 'floor-planner-master-note'
 
 export function loadMasterNoteLocal(): string {
@@ -152,160 +148,11 @@ export interface PlanSummary {
   name: string
 }
 
-function planStorageKey(planId: string) {
-  return `${STORAGE_KEY}-${planId}`
-}
-
-function readPlansIndex(): PlanSummary[] {
-  try {
-    const raw = localStorage.getItem(PLANS_INDEX_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as PlanSummary[]
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
-
-function writePlansIndex(plans: PlanSummary[]) {
-  localStorage.setItem(PLANS_INDEX_KEY, JSON.stringify(plans))
-}
-
-export function loadActivePlanIdLocal(): string | null {
-  return localStorage.getItem(ACTIVE_PLAN_ID_KEY)
-}
-
-export function saveActivePlanIdLocal(planId: string) {
-  localStorage.setItem(ACTIVE_PLAN_ID_KEY, planId)
-}
-
-export function savePlanForId(planId: string, plan: FloorPlan): void {
-  localStorage.setItem(planStorageKey(planId), JSON.stringify(plan))
-}
-
-export function loadPlanForId(planId: string): FloorPlan | null {
-  try {
-    const raw = localStorage.getItem(planStorageKey(planId))
-    if (!raw) return null
-    return normalizePlan(JSON.parse(raw) as LegacyPlan)
-  } catch {
-    return null
-  }
-}
-
-function migrateLegacyLocalStorage(): void {
-  const index = readPlansIndex()
-  if (index.length > 0) return
-
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return
-    const plan = normalizePlan(JSON.parse(raw) as LegacyPlan)
-    const planId = crypto.randomUUID()
-    savePlanForId(planId, plan)
-    writePlansIndex([{ id: planId, name: plan.name }])
-    saveActivePlanIdLocal(planId)
-  } catch {
-    // ignore
-  }
-}
-
 export function nextDefaultPlanName(existing: PlanSummary[]): string {
   const used = new Set(existing.map((p) => p.name))
   let i = existing.length + 1
   while (used.has(`Home ${i}`)) i += 1
   return `Home ${i}`
-}
-
-export interface LocalPlansSession {
-  plans: PlanSummary[]
-  activePlanId: string
-  plan: FloorPlan
-}
-
-export function mirrorCloudSessionLocally(session: LocalPlansSession): void {
-  if (session.plans.length === 0) return
-
-  const previous = readPlansIndex()
-  writePlansIndex(session.plans)
-  saveActivePlanIdLocal(session.activePlanId)
-  savePlanForId(session.activePlanId, session.plan)
-
-  const cloudIds = new Set(session.plans.map((p) => p.id))
-  for (const entry of previous) {
-    if (!cloudIds.has(entry.id)) {
-      localStorage.removeItem(planStorageKey(entry.id))
-    }
-  }
-}
-
-export function loadLocalPlansSession(): LocalPlansSession {
-  migrateLegacyLocalStorage()
-  let plans = readPlansIndex()
-
-  if (plans.length === 0) {
-    const plan = createEmptyPlan()
-    const planId = crypto.randomUUID()
-    savePlanForId(planId, plan)
-    plans = [{ id: planId, name: plan.name }]
-    writePlansIndex(plans)
-    saveActivePlanIdLocal(planId)
-    return { plans, activePlanId: planId, plan }
-  }
-
-  let activePlanId = loadActivePlanIdLocal()
-  if (!activePlanId || !plans.some((p) => p.id === activePlanId)) {
-    activePlanId = plans[0].id
-    saveActivePlanIdLocal(activePlanId)
-  }
-
-  const plan = loadPlanForId(activePlanId) ?? createEmptyPlan(plans[0].name)
-  return { plans, activePlanId, plan }
-}
-
-export function createLocalPlan(plan: FloorPlan): string {
-  const plans = readPlansIndex()
-  const planId = crypto.randomUUID()
-  savePlanForId(planId, plan)
-  plans.push({ id: planId, name: plan.name })
-  writePlansIndex(plans)
-  saveActivePlanIdLocal(planId)
-  return planId
-}
-
-export function mirrorPlanLocally(planId: string, plan: FloorPlan): void {
-  savePlanForId(planId, plan)
-  const plans = readPlansIndex()
-  if (!plans.some((p) => p.id === planId)) {
-    writePlansIndex([...plans, { id: planId, name: plan.name }])
-  }
-  saveActivePlanIdLocal(planId)
-}
-
-export function deleteLocalPlan(planId: string): void {
-  const plans = readPlansIndex().filter((p) => p.id !== planId)
-  writePlansIndex(plans)
-  localStorage.removeItem(planStorageKey(planId))
-}
-
-export function updateLocalPlanName(planId: string, name: string): void {
-  const plans = readPlansIndex().map((p) => (p.id === planId ? { ...p, name } : p))
-  writePlansIndex(plans)
-}
-
-export function savePlan(plan: FloorPlan): void {
-  const activeId = loadActivePlanIdLocal()
-  if (activeId) {
-    savePlanForId(activeId, plan)
-    updateLocalPlanName(activeId, plan.name)
-    return
-  }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(plan))
-}
-
-export function loadPlan(): FloorPlan {
-  const session = loadLocalPlansSession()
-  return session.plan
 }
 
 export function exportPlanJson(plan: FloorPlan): void {

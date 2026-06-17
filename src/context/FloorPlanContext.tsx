@@ -41,20 +41,19 @@ import {
   type WallDragAnchor,
 } from '../utils/planModel'
 import {
-  createLocalPlan,
-  deleteLocalPlan,
-  loadLocalPlansSession,
   loadMasterNoteLocal,
-  mirrorPlanLocally,
-  nextDefaultPlanName,
-  saveActivePlanIdLocal,
   saveMasterNoteLocal,
-  savePlan,
-  savePlanForId,
-  loadPlanForId,
+  nextDefaultPlanName,
   type PlanSummary,
-  updateLocalPlanName,
 } from '../utils/storage'
+import {
+  createMemoryPlan,
+  deleteMemoryPlan,
+  getMemoryPlansSession,
+  loadMemoryPlan,
+  saveMemoryPlan,
+  setMemoryActivePlanId,
+} from '../utils/memoryPlans'
 import {
   addFurnitureFromCatalog,
   deleteFurniture,
@@ -78,7 +77,6 @@ import {
   loadPlanFromFirestoreServer,
   loadMasterNoteFromFirestore,
   loadUserPlansSession,
-  pushLocalPlansToCloud,
   saveMasterNoteToFirestore,
   savePlanToFirestore,
   setActivePlanIdInFirestore,
@@ -358,8 +356,6 @@ interface FloorPlanContextValue {
   planWalls: ReturnType<typeof resolveWalls>
   planReady: boolean
   syncError: string | null
-  refreshFromCloud: () => Promise<void>
-  pushLocalPlansToCloud: () => Promise<void>
   firebaseProjectId: string | null
 }
 
@@ -389,20 +385,14 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   planRef.current = state.plan
   const activePlanIdRef = useRef<string | null>(null)
   activePlanIdRef.current = activePlanId
-  const cloudSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const masterNoteCloudSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const skipNextCloudSaveRef = useRef(false)
-  const skipPlanPersistenceRef = useRef(false)
   const planSummariesRef = useRef(planSummaries)
   planSummariesRef.current = planSummaries
 
   const flushCloudSave = useCallback(async () => {
     const planId = activePlanIdRef.current
     if (!user || !planId || !isFirebaseConfigured()) return
-    if (cloudSaveTimerRef.current) {
-      clearTimeout(cloudSaveTimerRef.current)
-      cloudSaveTimerRef.current = null
-    }
     await savePlanToFirestore(user.uid, planId, planRef.current)
   }, [user])
 
@@ -473,7 +463,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
           setActivePlanId(session.activePlanId)
           dispatch({ type: 'SET_PLAN', plan: session.plan })
         } else {
-          const session = loadLocalPlansSession()
+          const session = getMemoryPlansSession()
           if (cancelled) return
           skipNextCloudSaveRef.current = true
           setPlanSummaries(session.plans)
@@ -483,12 +473,12 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
         resetUndoStacks()
       } catch {
         if (!cancelled && user && isFirebaseConfigured()) {
-          setSyncError('Could not load plans from the cloud. Use Account → Refresh from cloud.')
+          setSyncError('Could not load plans from the cloud. Check your connection and try again.')
           setPlanReady(true)
           return
         }
         if (!cancelled) {
-          const session = loadLocalPlansSession()
+          const session = getMemoryPlansSession()
           skipNextCloudSaveRef.current = true
           setPlanSummaries(session.plans)
           setActivePlanId(session.activePlanId)
@@ -534,36 +524,27 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!planReady || !activePlanId) return
 
-    if (skipPlanPersistenceRef.current) {
-      skipPlanPersistenceRef.current = false
-      return
-    }
-
-    savePlan(state.plan)
-    savePlanForId(activePlanId, state.plan)
     setPlanSummaries((prev) =>
       prev.map((p) => (p.id === activePlanId ? { ...p, name: state.plan.name } : p)),
     )
-    updateLocalPlanName(activePlanId, state.plan.name)
 
-    if (!user || !isFirebaseConfigured()) return
+    if (!user || !isFirebaseConfigured()) {
+      saveMemoryPlan(activePlanId, state.plan)
+      return
+    }
 
     if (skipNextCloudSaveRef.current) {
       skipNextCloudSaveRef.current = false
       return
     }
 
-    if (cloudSaveTimerRef.current) clearTimeout(cloudSaveTimerRef.current)
-    cloudSaveTimerRef.current = setTimeout(() => {
-      savePlanToFirestore(user.uid, activePlanId, planRef.current).catch(() => {
-        setSyncError('Could not save to the cloud. Try Account → Refresh from cloud.')
-      })
-    }, 1500)
+    savePlanToFirestore(user.uid, activePlanId, planRef.current).catch(() => {
+      setSyncError('Could not save to the cloud. Check your connection and try again.')
+    })
   }, [state.plan, user, planReady, activePlanId])
 
   useEffect(() => {
     return () => {
-      if (cloudSaveTimerRef.current) clearTimeout(cloudSaveTimerRef.current)
       if (masterNoteCloudSaveTimerRef.current) clearTimeout(masterNoteCloudSaveTimerRef.current)
     }
   }, [])
@@ -628,12 +609,9 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     }
 
     if (!planId) {
-      planId = createLocalPlan(plan)
-    } else {
-      mirrorPlanLocally(planId, plan)
+      planId = createMemoryPlan(plan)
     }
 
-    skipPlanPersistenceRef.current = true
     skipNextCloudSaveRef.current = true
     setPlanSummaries((prev) =>
       prev.some((p) => p.id === planId) ? prev : [...prev, { id: planId!, name: plan.name }],
@@ -654,11 +632,6 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
         } catch {
           // Continue switching even if saving the current plan fails.
         }
-
-        if (cloudSaveTimerRef.current) {
-          clearTimeout(cloudSaveTimerRef.current)
-          cloudSaveTimerRef.current = null
-        }
       }
 
       let plan: FloorPlan | null = null
@@ -672,7 +645,6 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
               planSummariesRef.current.find((p) => p.id === planId)?.name ?? 'Untitled',
             )
           } else {
-            mirrorPlanLocally(planId, plan)
             setSyncError(null)
           }
           await setActivePlanIdInFirestore(user.uid, planId)
@@ -681,12 +653,11 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
           return
         }
       } else {
-        plan = loadPlanForId(planId)
-        saveActivePlanIdLocal(planId)
+        plan = loadMemoryPlan(planId)
+        setMemoryActivePlanId(planId)
       }
 
       skipNextCloudSaveRef.current = true
-      skipPlanPersistenceRef.current = true
       setActivePlanId(planId)
       dispatch({
         type: 'SET_PLAN',
@@ -708,11 +679,6 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       // Continue even if saving the current plan fails.
     }
 
-    if (cloudSaveTimerRef.current) {
-      clearTimeout(cloudSaveTimerRef.current)
-      cloudSaveTimerRef.current = null
-    }
-
     const remaining = summaries.filter((p) => p.id !== currentId)
     const nextId = remaining[0]?.id
     if (!nextId) return
@@ -722,27 +688,28 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
         await deletePlanFromFirestore(user.uid, currentId)
         await setActivePlanIdInFirestore(user.uid, nextId)
       } catch {
-        // Fall back to local-only delete below.
+        setSyncError('Could not delete that plan in the cloud.')
+        return
       }
+    } else {
+      deleteMemoryPlan(currentId)
     }
 
-    deleteLocalPlan(currentId)
-    saveActivePlanIdLocal(nextId)
-
-    let plan: FloorPlan | null = loadPlanForId(nextId)
+    let plan: FloorPlan | null = loadMemoryPlan(nextId)
     if (!plan && user && isFirebaseConfigured()) {
       try {
         plan = await loadPlanFromFirestore(user.uid, nextId)
-        if (plan) mirrorPlanLocally(nextId, plan)
       } catch {
         plan = null
       }
     }
 
-    skipPlanPersistenceRef.current = true
     skipNextCloudSaveRef.current = true
     setPlanSummaries(remaining)
     setActivePlanId(nextId)
+    if (!user || !isFirebaseConfigured()) {
+      setMemoryActivePlanId(nextId)
+    }
     dispatch({ type: 'SET_PLAN', plan: plan ?? createEmptyPlan(remaining[0].name) })
     resetUndoStacks()
   }, [flushCloudSave, user, resetUndoStacks])
@@ -780,44 +747,6 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     },
     [dispatchAction],
   )
-
-  const refreshFromCloud = useCallback(async () => {
-    if (!user || !isFirebaseConfigured()) return
-    setSyncError(null)
-    setPlanReady(false)
-    try {
-      const session = await loadUserPlansSession(user.uid)
-      skipNextCloudSaveRef.current = true
-      skipPlanPersistenceRef.current = true
-      setPlanSummaries(session.plans)
-      setActivePlanId(session.activePlanId)
-      dispatch({ type: 'SET_PLAN', plan: session.plan })
-      resetUndoStacks()
-    } catch {
-      setSyncError('Could not load plans from the cloud. Check your connection and try again.')
-    } finally {
-      setPlanReady(true)
-    }
-  }, [user, resetUndoStacks])
-
-  const pushLocalPlansToCloudHandler = useCallback(async () => {
-    if (!user || !isFirebaseConfigured()) return
-    setSyncError(null)
-    setPlanReady(false)
-    try {
-      const session = await pushLocalPlansToCloud(user.uid)
-      skipNextCloudSaveRef.current = true
-      skipPlanPersistenceRef.current = true
-      setPlanSummaries(session.plans)
-      setActivePlanId(session.activePlanId)
-      dispatch({ type: 'SET_PLAN', plan: session.plan })
-      resetUndoStacks()
-    } catch {
-      setSyncError('Could not upload local plans to the cloud.')
-    } finally {
-      setPlanReady(true)
-    }
-  }, [user, resetUndoStacks])
 
   const rotateSelected = useCallback(
     (direction: 'cw' | 'ccw') => {
@@ -882,8 +811,6 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       planWalls,
       planReady,
       syncError,
-      refreshFromCloud,
-      pushLocalPlansToCloud: pushLocalPlansToCloudHandler,
       firebaseProjectId: getFirebaseProjectId(),
     }),
     [
@@ -902,8 +829,6 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       switchPlan,
       deleteCurrentPlan,
       dispatchAction,
-      refreshFromCloud,
-      pushLocalPlansToCloudHandler,
       setMasterNote,
       updateCatalogEntry,
       setPlacementCatalogId,

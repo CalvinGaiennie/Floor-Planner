@@ -13,14 +13,8 @@ import { v4 as uuid } from 'uuid'
 import type { FloorPlan } from '../types/floorPlan'
 import { createEmptyPlan } from '../types/floorPlan'
 import { db, isFirebaseConfigured } from '../lib/firebase'
-import {
-  loadLocalPlansSession,
-  loadPlanForId,
-  mirrorCloudSessionLocally,
-  normalizePlanFromJson,
-  savePlanForId,
-  type PlanSummary,
-} from '../utils/storage'
+import { clearLegacyLocalPlans, readLegacyLocalPlansSession } from '../utils/legacyLocalMigration'
+import { normalizePlanFromJson, type PlanSummary } from '../utils/storage'
 
 export type { PlanSummary }
 
@@ -68,6 +62,29 @@ export async function migrateLegacyPlanIfNeeded(userId: string): Promise<void> {
     updatedAt: serverTimestamp(),
   })
   await setDoc(settingsRef(userId), { activePlanId: planId }, { merge: true })
+}
+
+async function migrateLegacyBrowserStorageToFirestore(userId: string): Promise<boolean> {
+  const legacy = readLegacyLocalPlansSession()
+  if (!legacy) return false
+
+  for (const summary of legacy.plans) {
+    const plan = legacy.planData.get(summary.id)
+    if (!plan) continue
+    await setDoc(planRef(userId, summary.id), {
+      plan,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  }
+
+  const activePlanId = legacy.plans.some((p) => p.id === legacy.activePlanId)
+    ? legacy.activePlanId
+    : legacy.plans[0].id
+
+  await setDoc(settingsRef(userId), { activePlanId }, { merge: true })
+  clearLegacyLocalPlans()
+  return true
 }
 
 export async function listPlansFromFirestore(userId: string): Promise<PlanSummary[]> {
@@ -213,83 +230,14 @@ export interface UserPlansSession {
   plan: FloorPlan
 }
 
-async function mergeMissingLocalPlansToFirestore(
-  userId: string,
-  cloudPlans: PlanSummary[],
-): Promise<void> {
-  const cloudIds = new Set(cloudPlans.map((p) => p.id))
-  const local = loadLocalPlansSession()
-
-  for (const summary of local.plans) {
-    if (cloudIds.has(summary.id)) continue
-    const plan = loadPlanForId(summary.id)
-    if (!plan) continue
-
-    await setDoc(planRef(userId, summary.id), {
-      plan,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    })
+async function createDefaultCloudSession(userId: string): Promise<UserPlansSession> {
+  const plan = createEmptyPlan()
+  const planId = await createPlanInFirestore(userId, plan)
+  return {
+    plans: [{ id: planId, name: plan.name }],
+    activePlanId: planId,
+    plan,
   }
-}
-
-async function mirrorAllCloudPlansLocally(userId: string, session: UserPlansSession): Promise<void> {
-  mirrorCloudSessionLocally(session)
-
-  for (const summary of session.plans) {
-    if (summary.id === session.activePlanId) continue
-    const plan = await loadPlanFromFirestore(userId, summary.id)
-    if (plan) savePlanForId(summary.id, plan)
-  }
-}
-
-async function uploadLocalSessionToFirestore(userId: string): Promise<UserPlansSession> {
-  const local = loadLocalPlansSession()
-
-  for (const summary of local.plans) {
-    const plan = loadPlanForId(summary.id) ?? createEmptyPlan(summary.name)
-    const existing = await getDoc(planRef(userId, summary.id))
-    await setDoc(
-      planRef(userId, summary.id),
-      {
-        plan,
-        ...(existing.exists() ? {} : { createdAt: serverTimestamp() }),
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true },
-    )
-  }
-
-  const activePlanId = local.plans.some((p) => p.id === local.activePlanId)
-    ? local.activePlanId
-    : local.plans[0].id
-
-  await setActivePlanIdInFirestore(userId, activePlanId)
-  const plans = await listPlansFromServer(userId)
-  const plan =
-    (await loadPlanFromServer(userId, activePlanId)) ?? createEmptyPlan(plans[0]?.name)
-
-  const session = { plans, activePlanId, plan }
-  await mirrorAllCloudPlansLocally(userId, session)
-  return session
-}
-
-/** Upload every local plan to Firestore (use when cloud is empty or out of date). */
-export async function pushLocalPlansToCloud(userId: string): Promise<UserPlansSession> {
-  const session = await uploadLocalSessionToFirestore(userId)
-  await mergeMissingLocalPlansToFirestore(userId, session.plans)
-  const plans = await listPlansFromServer(userId)
-  let activePlanId = session.activePlanId
-  if (!plans.some((p) => p.id === activePlanId)) {
-    activePlanId = plans[0]?.id ?? activePlanId
-    if (activePlanId) await setActivePlanIdInFirestore(userId, activePlanId)
-  }
-  const plan = activePlanId
-    ? ((await loadPlanFromServer(userId, activePlanId)) ?? session.plan)
-    : session.plan
-  const merged: UserPlansSession = { plans, activePlanId, plan }
-  await mirrorAllCloudPlansLocally(userId, merged)
-  return merged
 }
 
 export async function loadUserPlansSession(userId: string): Promise<UserPlansSession> {
@@ -297,11 +245,15 @@ export async function loadUserPlansSession(userId: string): Promise<UserPlansSes
   let plans = await listPlansFromServer(userId)
 
   if (plans.length === 0) {
-    return uploadLocalSessionToFirestore(userId)
+    const migrated = await migrateLegacyBrowserStorageToFirestore(userId)
+    if (migrated) {
+      plans = await listPlansFromServer(userId)
+    }
   }
 
-  await mergeMissingLocalPlansToFirestore(userId, plans)
-  plans = await listPlansFromServer(userId)
+  if (plans.length === 0) {
+    return createDefaultCloudSession(userId)
+  }
 
   let activePlanId = await getActivePlanIdFromServer(userId)
   if (!activePlanId || !plans.some((p) => p.id === activePlanId)) {
@@ -312,7 +264,5 @@ export async function loadUserPlansSession(userId: string): Promise<UserPlansSes
   const plan =
     (await loadPlanFromServer(userId, activePlanId)) ?? createEmptyPlan(plans[0].name)
 
-  const session = { plans, activePlanId, plan }
-  await mirrorAllCloudPlansLocally(userId, session)
-  return session
+  return { plans, activePlanId, plan }
 }
