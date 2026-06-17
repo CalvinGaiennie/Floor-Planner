@@ -1,0 +1,374 @@
+.app {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background: #0b1220;
+  color: #e2e8f0;
+}
+
+.app-main {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-footer {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.toolbar {
+  z-index: 10;
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #1e293b;
+  background: #111827;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.toolbar-brand {
+  flex-shrink: 0;
+}
+
+.toolbar-brand h1 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.toolbar-subtitle {
+  display: block;
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.toolbar-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.toolbar-buttons {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.toolbar button,
+.toolbar select {
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+
+.toolbar button:hover,
+.toolbar select:hover {
+  background: #334155;
+}
+
+.toolbar button.active {
+  background: #2563eb;
+  border-color: #3b82f6;
+}
+
+.toolbar button.danger {
+  background: #7f1d1d;
+  border-color: #b91c1c;
+}
+
+.toolbar button.walk-btn.active {
+  background: #059669;
+  border-color: #10b981;
+}
+
+.toolbar-actions {
+  margin-left: auto;
+}
+
+.toolbar-hint {
+  flex: 1 1 auto;
+  margin: 0;
+  min-width: 120px;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.walk-hint {
+  color: #6ee7b7;
+}
+
+.toolbar button.primary {
+  background: #2563eb;
+  border-color: #3b82f6;
+}
+
+.toolbar button.primary:hover {
+  background: #1d4ed8;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #0f172a;
+}
+
+.panel-header {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 14px;
+  border-bottom: 1px solid #1e293b;
+  background: #0f172a;
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.panel-meta {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.panel-zoom-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 6px 14px;
+  border-bottom: 1px solid #1e293b;
+  background: #111827;
+}
+
+.zoom-label {
+  font-size: 0.7rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 220px;
+  max-width: 320px;
+  width: 40%;
+}
+
+.zoom-btn,
+.zoom-fit-btn {
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.zoom-fit-btn {
+  padding: 2px 10px;
+  font-size: 0.75rem;
+}
+
+.zoom-btn:hover,
+.zoom-fit-btn:hover {
+  background: #334155;
+}
+
+.zoom-slider {
+  flex: 1;
+  min-width: 80px;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+.plan-canvas-area {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
+  background: #e2e8f0;
+}
+
+.plan-canvas {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+.plan-status {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 4px 14px;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  background: #0f172a;
+}
+
+.plan-status-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
+  border-top: 1px solid rgba(30, 41, 59, 0.85);
+  background: rgba(15, 23, 42, 0.88);
+  pointer-events: none;
+}
+
+.plan-status .ok {
+  color: #34d399;
+}
+
+.plan-status .warn {
+  color: #fbbf24;
+}
+
+.room-bottom-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 6px 12px;
+  border-top: 1px solid #1e293b;
+  background: #111827;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.room-bottom-bar-hint {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.bar-field-compact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.bar-field-compact span {
+  font-size: 0.65rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  min-width: 2.5em;
+}
+
+.bar-field-compact input {
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  width: 72px;
+}
+
+.bar-field-compact input[type='text'] {
+  width: 120px;
+}
+
+.room-bottom-bar-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.room-bottom-bar-actions button {
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.room-bottom-bar-actions button.danger {
+  background: #7f1d1d;
+  border-color: #b91c1c;
+}
+
+.room-bottom-bar-actions button:hover {
+  background: #334355;
+}
+
+.room-bottom-bar-actions button.danger:hover {
+  background: #991b1b;
+}
+
+.view3d-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: #0f172a;
+}
+
+.view3d-canvas-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.view3d-canvas-wrap canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.walk-active .view3d-canvas-wrap {
+  cursor: pointer;
+}
+
+.walk-overlay-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #e2e8f0;
+}

@@ -1,0 +1,53 @@
+{
+  "calibration": {
+    "planPerPxX": 0.3172743055555555,
+    "planPerPxY": 0.31885967134485144,
+    "originPlanX": -23.055555555555557,
+    "originPlanY": -8.499999999999986
+  },
+  "roomBefore": {
+    "position": {
+      "x": 180,
+      "y": 90
+    },
+    "width": 12,
+    "depth": 10,
+    "rotation": 0
+  },
+  "roomAfterDown": {
+    "position": {
+      "x": 180,
+      "y": 91.5
+    },
+    "width": 12,
+    "depth": 7
+  },
+  "bottomCornerDeltaAfterDown": {
+    "left": {
+      "x": 0,
+      "y": 0
+    },
+    "right": {
+      "x": 0,
+      "y": 0
+    }
+  },
+  "roomAfterUp": {
+    "position": {
+      "x": 180,
+      "y": 89.5
+    },
+    "width": 12,
+    "depth": 11
+  },
+  "bottomCornerDeltaAfterUp": {
+    "left": {
+      "x": 0,
+      "y": 0
+    },
+    "right": {
+      "x": 0,
+      "y": 0
+    }
+  }
+}
