@@ -1486,6 +1486,41 @@ body.project-notes-resizing {
   background: #991b1b;
 }
 
+.corner-disconnect-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+  max-width: 320px;
+}
+
+.corner-disconnect-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.corner-disconnect-label {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.corner-disconnect-row button {
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.corner-disconnect-row button:hover {
+  background: #334355;
+}
+
 .room-bottom-bar-rotate {
   display: flex;
   gap: 4px;

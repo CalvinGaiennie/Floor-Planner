@@ -1,19 +1,21 @@
 import { useFloorPlan } from '../context/FloorPlanContext'
-import { rotationDegrees } from '../utils/geometry'
+import { rotationDegrees, wallLength } from '../utils/geometry'
 import { formatFeetInches } from '../utils/imperial'
 import { doorStyleLabel, doorSwingLabel } from '../utils/doors'
 import {
-  canSplitRoom,
-  canSplitWall,
   getRoom,
+  getRoomsAtVertex,
   getSharedWallRoomIds,
+  getSharedWallsForRoom,
   getWall,
   isPlanWallId,
   isSharedRoomWall,
+  isSharedVertex,
+  isVertexId,
   resolveWall,
   roomBoundingSize,
+  wallsAtVertex,
 } from '../utils/planModel'
-import { wallLength } from '../utils/geometry'
 
 function RotateButtons({
   onRotate,
@@ -55,8 +57,9 @@ export function RoomBottomBar() {
     duplicateRoom,
     duplicateFurniture,
     rotateSelected,
-    splitRoomInPlan,
-    splitSelectedWall,
+    disconnectSharedWall,
+    disconnectWallSegment,
+    disconnectCornerFromRoom,
   } = useFloorPlan()
 
   const selectedWallId =
@@ -71,7 +74,8 @@ export function RoomBottomBar() {
         .join(' · ')
     : ''
 
-  const canSplitSelectedWall = selectedWallId ? canSplitWall(state.plan, selectedWallId) : false
+  const selectedVertexId =
+    state.selectedId && isVertexId(state.plan, state.selectedId) ? state.selectedId : null
 
   if (selectedWall) {
     return (
@@ -94,27 +98,25 @@ export function RoomBottomBar() {
         </label>
 
         <div className="room-bottom-bar-actions">
-          {canSplitSelectedWall && (
+          {isSharedWall ? (
             <button
               type="button"
-              onClick={() => splitSelectedWall(selectedWallId!)}
-              title="Add a corner at the wall midpoint"
+              className="danger"
+              onClick={() => disconnectSharedWall(selectedWallId!)}
+              title={`Remove the shared wall between ${sharedRoomNames.replace(/ · /g, ' and ')}`}
             >
-              Split wall
+              Disconnect rooms
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="danger"
+              onClick={deleteSelected}
+              title="Remove this wall"
+            >
+              Delete wall
             </button>
           )}
-          <button
-            type="button"
-            className="danger"
-            onClick={deleteSelected}
-            title={
-              isSharedWall
-                ? `Remove the shared wall between ${sharedRoomNames.replace(/ · /g, ' and ')}`
-                : 'Remove this wall'
-            }
-          >
-            {isSharedWall ? 'Disconnect rooms' : 'Delete wall'}
-          </button>
         </div>
       </footer>
     )
@@ -200,18 +202,83 @@ export function RoomBottomBar() {
     )
   }
 
+  if (selectedVertexId) {
+    const walls = wallsAtVertex(state.plan, selectedVertexId)
+    const roomIds = getRoomsAtVertex(state.plan, selectedVertexId)
+    const sharedCorner = isSharedVertex(state.plan, selectedVertexId)
+    const cornerRoomNames = roomIds
+      .map((id) => getRoom(state.plan, id)?.name ?? 'Room')
+      .join(' · ')
+
+    return (
+      <footer className="room-bottom-bar">
+        <label className="bar-field-compact bar-field-readonly">
+          <span>Type</span>
+          <input type="text" readOnly value={sharedCorner ? 'Shared corner' : 'Corner'} />
+        </label>
+
+        {sharedCorner && (
+          <label className="bar-field-compact bar-field-readonly">
+            <span>Rooms</span>
+            <input type="text" readOnly value={cornerRoomNames} />
+          </label>
+        )}
+
+        <div className="corner-disconnect-list">
+          {walls.map((wall) => {
+            const room = getRoom(state.plan, wall.roomId)
+            const resolved = resolveWall(state.plan, wall)
+            if (!resolved) return null
+            return (
+              <div key={wall.id} className="corner-disconnect-row">
+                <span className="corner-disconnect-label">
+                  {room?.name ?? 'Room'} · {formatFeetInches(wallLength(resolved))}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => disconnectWallSegment(wall.id)}
+                  title="Remove this wall segment from the corner"
+                >
+                  Disconnect wall
+                </button>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="room-bottom-bar-actions">
+          {sharedCorner &&
+            roomIds.map((roomId) => {
+              const name = getRoom(state.plan, roomId)?.name ?? 'Room'
+              return (
+                <button
+                  key={roomId}
+                  type="button"
+                  onClick={() => disconnectCornerFromRoom(selectedVertexId, roomId)}
+                  title={`Stop ${name} from sharing this corner point`}
+                >
+                  Separate {name}
+                </button>
+              )
+            })}
+        </div>
+      </footer>
+    )
+  }
+
   if (!selectedRoom) {
     return (
       <footer className="room-bottom-bar room-bottom-bar-empty">
         <span className="room-bottom-bar-hint">
-          Select a room, wall, door, or furniture. Click wall centerlines to select shared walls.
+          Select a room, corner, wall, door, or furniture. Click corners or wall centerlines to
+          disconnect connections.
         </span>
       </footer>
     )
   }
 
   const { width, depth } = roomBoundingSize(state.plan, selectedRoom)
-  const roomCanSplit = canSplitRoom(state.plan, selectedRoom.id)
+  const sharedWalls = getSharedWallsForRoom(state.plan, selectedRoom.id)
 
   const setNumber = (field: 'wallHeight', raw: string) => {
     const value = Number(raw)
@@ -251,15 +318,21 @@ export function RoomBottomBar() {
       <RotateButtons onRotate={rotateSelected} />
 
       <div className="room-bottom-bar-actions">
-        {roomCanSplit && (
-          <button
-            type="button"
-            onClick={() => splitRoomInPlan(selectedRoom.id)}
-            title="Divide this room into two with an interior wall"
-          >
-            Split room
-          </button>
-        )}
+        {sharedWalls.map(({ wallId, otherRoomIds }) => {
+          const otherNames = otherRoomIds
+            .map((id) => getRoom(state.plan, id)?.name ?? 'Room')
+            .join(', ')
+          return (
+            <button
+              key={wallId}
+              type="button"
+              onClick={() => disconnectSharedWall(wallId)}
+              title={`Remove the shared wall between ${selectedRoom.name} and ${otherNames}`}
+            >
+              Disconnect from {otherNames}
+            </button>
+          )
+        })}
         <button type="button" onClick={() => duplicateRoom(selectedRoom.id)}>
           Duplicate
         </button>

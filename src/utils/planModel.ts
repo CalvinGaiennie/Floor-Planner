@@ -486,303 +486,84 @@ export function disconnectRoomsAtWall(plan: FloorPlan, wallId: string): FloorPla
   return deleteWall(plan, wallId)
 }
 
-export function roomOrderedVertexIds(plan: FloorPlan, room: Room): string[] | null {
-  if (!isRoomClosed(plan, room)) return null
-
-  const walls = room.wallIds
-    .map((id) => getWall(plan, id))
-    .filter((w): w is PlanWall => w !== undefined)
-  if (walls.length < 3) return null
-
-  const used = new Set<string>()
-  const ids: string[] = []
-  let vertexId = walls[0].startVertexId
-
-  for (let step = 0; step < walls.length; step++) {
-    ids.push(vertexId)
-
-    const nextWall = walls.find(
-      (w) => !used.has(w.id) && (w.startVertexId === vertexId || w.endVertexId === vertexId),
-    )
-    if (!nextWall) return null
-
-    used.add(nextWall.id)
-    vertexId =
-      nextWall.startVertexId === vertexId ? nextWall.endVertexId : nextWall.startVertexId
-  }
-
-  return ids
+export function wallsAtVertex(plan: FloorPlan, vertexId: string): PlanWall[] {
+  return plan.walls.filter(
+    (w) => w.startVertexId === vertexId || w.endVertexId === vertexId,
+  )
 }
 
-function findWallBetweenVertices(
+export function getRoomsAtVertex(plan: FloorPlan, vertexId: string): string[] {
+  const roomIds = new Set<string>()
+  for (const wall of wallsAtVertex(plan, vertexId)) {
+    roomIds.add(wall.roomId)
+  }
+  return [...roomIds]
+}
+
+export function isSharedVertex(plan: FloorPlan, vertexId: string): boolean {
+  return getRoomsAtVertex(plan, vertexId).length >= 2
+}
+
+export function getSharedWallsForRoom(
   plan: FloorPlan,
-  room: Room,
-  a: string,
-  b: string,
-): string | null {
+  roomId: string,
+): { wallId: string; otherRoomIds: string[] }[] {
+  const room = getRoom(plan, roomId)
+  if (!room) return []
+
+  const results: { wallId: string; otherRoomIds: string[] }[] = []
   for (const wallId of room.wallIds) {
-    const wall = getWall(plan, wallId)
-    if (!wall) continue
-    if (
-      (wall.startVertexId === a && wall.endVertexId === b) ||
-      (wall.startVertexId === b && wall.endVertexId === a)
-    ) {
-      return wallId
+    if (!isSharedRoomWall(plan, wallId)) continue
+    const otherRoomIds = getSharedWallRoomIds(plan, wallId).filter((id) => id !== roomId)
+    if (otherRoomIds.length > 0) {
+      results.push({ wallId, otherRoomIds })
     }
   }
-  return null
+  return results
 }
 
-function isAxisAlignedRectangle(plan: FloorPlan, room: Room): boolean {
-  if (!isRoomClosed(plan, room)) return false
-  const vertexIds = roomOrderedVertexIds(plan, room)
-  if (!vertexIds || vertexIds.length !== 4) return false
-
-  for (const wallId of room.wallIds) {
-    const wall = getWall(plan, wallId)
-    if (!wall) return false
-    const resolved = resolveWall(plan, wall)
-    if (!resolved) return false
-    const dx = Math.abs(resolved.end.x - resolved.start.x)
-    const dy = Math.abs(resolved.end.y - resolved.start.y)
-    if (dx > 0.01 && dy > 0.01) return false
-  }
-  return true
-}
-
-interface SplitWallResult {
-  plan: FloorPlan
-  midVertexId: string
-  startWallId: string
-  endWallId: string
-}
-
-function splitWallAtMidpointDetailed(plan: FloorPlan, wallId: string): SplitWallResult | null {
+export function deleteWallSegment(plan: FloorPlan, wallId: string): FloorPlan {
   const wall = getWall(plan, wallId)
-  if (!wall) return null
-  const resolved = resolveWall(plan, wall)
-  if (!resolved) return null
+  if (!wall) return plan
 
-  const length = Math.hypot(resolved.end.x - resolved.start.x, resolved.end.y - resolved.start.y)
-  if (length < MIN_WALL_LENGTH * 2) return null
+  const room = getRoom(plan, wall.roomId)
+  if (!room) return plan
 
-  const midVertex = createVertex({
-    x: (resolved.start.x + resolved.end.x) / 2,
-    y: (resolved.start.y + resolved.end.y) / 2,
-  })
+  const orphanVertices = [wall.startVertexId, wall.endVertexId]
 
-  const toSplit = new Set<string>([wallId])
-  for (const other of plan.walls) {
-    if (other.id === wallId) continue
-    const otherResolved = resolveWall(plan, other)
-    if (otherResolved && wallsShareSegment(resolved, otherResolved)) {
-      toSplit.add(other.id)
-    }
-  }
+  return removeVerticesIfOrphaned(
+    {
+      ...plan,
+      walls: plan.walls.filter((w) => w.id !== wallId),
+      rooms: plan.rooms.map((r) =>
+        r.id === room.id ? { ...r, wallIds: r.wallIds.filter((id) => id !== wallId) } : r,
+      ),
+    },
+    orphanVertices,
+  )
+}
 
-  const newWalls: PlanWall[] = []
-  const splitMap = new Map<string, { startWallId: string; endWallId: string }>()
+export function disconnectVertexForRoom(
+  plan: FloorPlan,
+  vertexId: string,
+  roomId: string,
+): FloorPlan {
+  const vertex = getVertex(plan, vertexId)
+  if (!vertex) return plan
+  if (!getRoomsAtVertex(plan, vertexId).includes(roomId)) return plan
 
-  for (const id of toSplit) {
-    const w = getWall(plan, id)!
-    const startWall = createPlanWall(w.roomId, w.startVertexId, midVertex.id, w.height, w.thickness)
-    const endWall = createPlanWall(w.roomId, midVertex.id, w.endVertexId, w.height, w.thickness)
-    newWalls.push(startWall, endWall)
-    splitMap.set(id, { startWallId: startWall.id, endWallId: endWall.id })
-  }
+  const newVertex = createVertex({ x: vertex.x, y: vertex.y })
 
-  const primary = splitMap.get(wallId)
-  if (!primary) return null
-
-  const nextPlan: FloorPlan = {
+  return {
     ...plan,
-    vertices: [...plan.vertices, midVertex],
-    walls: [...plan.walls.filter((w) => !toSplit.has(w.id)), ...newWalls],
-    rooms: plan.rooms.map((room) => ({
-      ...room,
-      wallIds: room.wallIds.flatMap((wid) => {
-        const split = splitMap.get(wid)
-        if (!split) return [wid]
-        return [split.startWallId, split.endWallId]
-      }),
-    })),
+    vertices: [...plan.vertices, newVertex],
+    walls: plan.walls.map((wall) => {
+      if (wall.roomId !== roomId) return wall
+      if (wall.startVertexId === vertexId) return { ...wall, startVertexId: newVertex.id }
+      if (wall.endVertexId === vertexId) return { ...wall, endVertexId: newVertex.id }
+      return wall
+    }),
   }
-
-  return {
-    plan: nextPlan,
-    midVertexId: midVertex.id,
-    startWallId: primary.startWallId,
-    endWallId: primary.endWallId,
-  }
-}
-
-function wallSegmentMidpoint(plan: FloorPlan, wallId: string): Point2D | null {
-  const wall = getWall(plan, wallId)
-  if (!wall) return null
-  const resolved = resolveWall(plan, wall)
-  if (!resolved) return null
-  return {
-    x: (resolved.start.x + resolved.end.x) / 2,
-    y: (resolved.start.y + resolved.end.y) / 2,
-  }
-}
-
-function pickSplitHalf(
-  startWallId: string,
-  endWallId: string,
-  plan: FloorPlan,
-  axis: 'x' | 'y',
-  preferLow: boolean,
-): string {
-  const midStart = wallSegmentMidpoint(plan, startWallId)
-  const midEnd = wallSegmentMidpoint(plan, endWallId)
-  if (!midStart || !midEnd) return startWallId
-  const startVal = axis === 'x' ? midStart.x : midStart.y
-  const endVal = axis === 'x' ? midEnd.x : midEnd.y
-  if (preferLow) return startVal <= endVal ? startWallId : endWallId
-  return startVal >= endVal ? startWallId : endWallId
-}
-
-export function canSplitWall(plan: FloorPlan, wallId: string): boolean {
-  const wall = getWall(plan, wallId)
-  if (!wall) return false
-  const resolved = resolveWall(plan, wall)
-  if (!resolved) return false
-  const length = Math.hypot(resolved.end.x - resolved.start.x, resolved.end.y - resolved.start.y)
-  return length >= MIN_WALL_LENGTH * 2
-}
-
-export function splitWallAtMidpoint(plan: FloorPlan, wallId: string): FloorPlan {
-  const result = splitWallAtMidpointDetailed(plan, wallId)
-  return result?.plan ?? plan
-}
-
-export function canSplitRoom(plan: FloorPlan, roomId: string): boolean {
-  const room = getRoom(plan, roomId)
-  if (!room) return false
-  return isAxisAlignedRectangle(plan, room)
-}
-
-export function splitRoom(plan: FloorPlan, roomId: string): FloorPlan {
-  const room = getRoom(plan, roomId)
-  if (!room || !canSplitRoom(plan, roomId)) return plan
-
-  const vertexIds = roomOrderedVertexIds(plan, room)
-  if (!vertexIds || vertexIds.length !== 4) return plan
-
-  const vertices = vertexIds.map((id) => getVertex(plan, id)).filter((v): v is Vertex => v !== undefined)
-  if (vertices.length !== 4) return plan
-
-  const xs = vertices.map((v) => v.x)
-  const ys = vertices.map((v) => v.y)
-  const width = Math.max(...xs) - Math.min(...xs)
-  const depth = Math.max(...ys) - Math.min(...ys)
-  const verticalSplit = width >= depth
-
-  let planState = plan
-  const [v0, v1, v2, v3] = vertexIds
-
-  if (verticalSplit) {
-    const bottomId = findWallBetweenVertices(planState, room, v0, v1)
-    const topId =
-      findWallBetweenVertices(planState, room, v2, v3) ??
-      findWallBetweenVertices(planState, room, v3, v2)
-    const leftId = findWallBetweenVertices(planState, room, v3, v0)
-    const rightId = findWallBetweenVertices(planState, room, v1, v2)
-    if (!bottomId || !topId || !leftId || !rightId) return plan
-
-    const bottom = splitWallAtMidpointDetailed(planState, bottomId)
-    if (!bottom) return plan
-    planState = bottom.plan
-
-    const roomAfterBottom = getRoom(planState, roomId)!
-    const topIdNow =
-      findWallBetweenVertices(planState, roomAfterBottom, v2, v3) ??
-      findWallBetweenVertices(planState, roomAfterBottom, v3, v2)
-    if (!topIdNow) return plan
-
-    const top = splitWallAtMidpointDetailed(planState, topIdNow)
-    if (!top) return plan
-    planState = top.plan
-
-    const m0 = bottom.midVertexId
-    const m2 = top.midVertexId
-    const interiorA = createPlanWall(roomId, m0, m2, room.wallHeight, room.wallThickness)
-    const newRoomId = uuid()
-    const interiorB = createPlanWall(newRoomId, m2, m0, room.wallHeight, room.wallThickness)
-
-    const bottomLeft = pickSplitHalf(bottom.startWallId, bottom.endWallId, planState, 'x', true)
-    const bottomRight = bottomLeft === bottom.startWallId ? bottom.endWallId : bottom.startWallId
-    const topLeft = pickSplitHalf(top.startWallId, top.endWallId, planState, 'x', true)
-    const topRight = topLeft === top.startWallId ? top.endWallId : top.startWallId
-
-    const leftWallIds = [leftId, bottomLeft, interiorA.id, topLeft]
-    const rightWallIds = [bottomRight, rightId, topRight, interiorB.id]
-    const newRoom: Room = {
-      id: newRoomId,
-      name: nextRoomName(planState.rooms),
-      wallIds: rightWallIds,
-      wallHeight: room.wallHeight,
-      wallThickness: room.wallThickness,
-    }
-
-    return sanitizePlan({
-      ...planState,
-      walls: [...planState.walls, interiorA, interiorB],
-      rooms: planState.rooms.map((r) =>
-        r.id === roomId ? { ...r, wallIds: leftWallIds } : r,
-      ).concat(newRoom),
-    })
-  }
-
-  const bottomId = findWallBetweenVertices(planState, room, v0, v1)
-  const topId =
-    findWallBetweenVertices(planState, room, v2, v3) ??
-    findWallBetweenVertices(planState, room, v3, v2)
-  const leftId = findWallBetweenVertices(planState, room, v3, v0)
-  const rightId = findWallBetweenVertices(planState, room, v1, v2)
-  if (!bottomId || !topId || !leftId || !rightId) return plan
-
-  const left = splitWallAtMidpointDetailed(planState, leftId)
-  if (!left) return plan
-  planState = left.plan
-
-  const roomAfterLeft = getRoom(planState, roomId)!
-  const rightIdNow = findWallBetweenVertices(planState, roomAfterLeft, v1, v2)
-  if (!rightIdNow) return plan
-
-  const right = splitWallAtMidpointDetailed(planState, rightIdNow)
-  if (!right) return plan
-  planState = right.plan
-
-  const m3 = left.midVertexId
-  const m1 = right.midVertexId
-  const interiorA = createPlanWall(roomId, m1, m3, room.wallHeight, room.wallThickness)
-  const newRoomId = uuid()
-  const interiorB = createPlanWall(newRoomId, m3, m1, room.wallHeight, room.wallThickness)
-
-  const leftBottom = pickSplitHalf(left.startWallId, left.endWallId, planState, 'y', true)
-  const leftTop = leftBottom === left.startWallId ? left.endWallId : left.startWallId
-  const rightBottom = pickSplitHalf(right.startWallId, right.endWallId, planState, 'y', true)
-  const rightTop = rightBottom === right.startWallId ? right.endWallId : right.startWallId
-
-  const bottomWallIds = [bottomId, rightBottom, interiorA.id, leftBottom]
-  const topWallIds = [leftTop, interiorB.id, rightTop, topId]
-  const newRoom: Room = {
-    id: newRoomId,
-    name: nextRoomName(planState.rooms),
-    wallIds: topWallIds,
-    wallHeight: room.wallHeight,
-    wallThickness: room.wallThickness,
-  }
-
-  return sanitizePlan({
-    ...planState,
-    walls: [...planState.walls, interiorA, interiorB],
-    rooms: planState.rooms.map((r) =>
-      r.id === roomId ? { ...r, wallIds: bottomWallIds } : r,
-    ).concat(newRoom),
-  })
 }
 
 export function duplicateRoom(plan: FloorPlan, roomId: string): FloorPlan {

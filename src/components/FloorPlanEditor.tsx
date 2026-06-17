@@ -371,12 +371,12 @@ export function FloorPlanEditor() {
       const door = findDoorAtPoint(plan, planWalls, point)
       if (door) return door.id
 
-      const wallId = findWallAtPoint(planWalls, point, containingRoomIds)
-      if (wallId) return wallId
-
       for (const v of plan.vertices) {
         if (Math.hypot(v.x - point.x, v.y - point.y) < VERTEX_SNAP_DISTANCE) return v.id
       }
+
+      const wallId = findWallAtPoint(planWalls, point, containingRoomIds)
+      if (wallId) return wallId
 
       if (selectedRoom) {
         for (const vid of roomVertexIds(plan, selectedRoom)) {
@@ -689,6 +689,20 @@ export function FloorPlanEditor() {
         ctx.font = '10px system-ui'
         ctx.textAlign = 'center'
         ctx.fillText(formatFeetInches(door.width), center.x, center.y - 8)
+      }
+    }
+
+    if (selectedId && isVertexId(plan, selectedId)) {
+      const v = getVertex(plan, selectedId)
+      if (v) {
+        const screen = planToScreen(v, offset, scale)
+        ctx.fillStyle = '#2563eb'
+        ctx.strokeStyle = '#1d4ed8'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.arc(screen.x, screen.y, 8, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.stroke()
       }
     }
 

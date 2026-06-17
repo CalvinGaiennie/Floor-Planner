@@ -26,8 +26,9 @@ import {
   dragWallPerpendicular,
   duplicateRoom,
   reorderRoom,
-  splitRoom,
-  splitWallAtMidpoint,
+  disconnectRoomsAtWall,
+  deleteWallSegment,
+  disconnectVertexForRoom,
   findRoomByVertexId,
   findRoomByWallId,
   getRoom,
@@ -144,8 +145,9 @@ type Action =
   | { type: 'DUPLICATE_ROOM'; id: string }
   | { type: 'DUPLICATE_FURNITURE'; id: string }
   | { type: 'REORDER_ROOM'; activeId: string; overId: string }
-  | { type: 'SPLIT_ROOM'; roomId: string }
-  | { type: 'SPLIT_WALL'; wallId: string }
+  | { type: 'DISCONNECT_SHARED_WALL'; wallId: string }
+  | { type: 'DISCONNECT_WALL_SEGMENT'; wallId: string }
+  | { type: 'DISCONNECT_VERTEX_ROOM'; vertexId: string; roomId: string }
   | { type: 'MOVE_ROOM'; roomId: string; point: { x: number; y: number } }
   | { type: 'RESIZE_WALL'; wallId: string; point: { x: number; y: number }; anchor: WallDragAnchor }
   | { type: 'MOVE_VERTEX'; vertexId: string; point: { x: number; y: number } }
@@ -168,8 +170,9 @@ const PLAN_UNDO_ACTIONS = new Set<Action['type']>([
   'DUPLICATE_ROOM',
   'DUPLICATE_FURNITURE',
   'REORDER_ROOM',
-  'SPLIT_ROOM',
-  'SPLIT_WALL',
+  'DISCONNECT_SHARED_WALL',
+  'DISCONNECT_WALL_SEGMENT',
+  'DISCONNECT_VERTEX_ROOM',
   'MOVE_ROOM',
   'RESIZE_WALL',
   'MOVE_VERTEX',
@@ -293,21 +296,19 @@ function reducer(state: EditorState, action: Action): EditorState {
         plan: reorderRoom(state.plan, action.activeId, action.overId),
       }
     }
-    case 'SPLIT_ROOM': {
-      const beforeCount = state.plan.rooms.length
-      const plan = splitRoom(state.plan, action.roomId)
-      if (plan.rooms.length === beforeCount) return state
-      const newRoom = lastCreatedRoom(plan)
-      return {
-        ...state,
-        plan,
-        selectedId: newRoom?.id ?? action.roomId,
-      }
+    case 'DISCONNECT_SHARED_WALL': {
+      const plan = disconnectRoomsAtWall(state.plan, action.wallId)
+      if (plan === state.plan) return state
+      return { ...state, plan, selectedId: null }
     }
-    case 'SPLIT_WALL': {
-      const beforeCount = state.plan.walls.length
-      const plan = splitWallAtMidpoint(state.plan, action.wallId)
-      if (plan.walls.length === beforeCount) return state
+    case 'DISCONNECT_WALL_SEGMENT': {
+      const plan = deleteWallSegment(state.plan, action.wallId)
+      if (plan === state.plan) return state
+      return { ...state, plan, selectedId: null }
+    }
+    case 'DISCONNECT_VERTEX_ROOM': {
+      const plan = disconnectVertexForRoom(state.plan, action.vertexId, action.roomId)
+      if (plan === state.plan) return state
       return { ...state, plan }
     }
     case 'MOVE_ROOM': {
@@ -446,8 +447,9 @@ interface FloorPlanContextValue {
   duplicateRoom: (id: string) => void
   duplicateFurniture: (id: string) => void
   reorderRoomInList: (activeId: string, overId: string) => void
-  splitRoomInPlan: (roomId: string) => void
-  splitSelectedWall: (wallId: string) => void
+  disconnectSharedWall: (wallId: string) => void
+  disconnectWallSegment: (wallId: string) => void
+  disconnectCornerFromRoom: (vertexId: string, roomId: string) => void
   moveRoom: (roomId: string, point: { x: number; y: number }) => void
   resizeWall: (wallId: string, point: { x: number; y: number }, anchor: WallDragAnchor) => void
   moveVertex: (vertexId: string, point: { x: number; y: number }) => void
@@ -1071,8 +1073,12 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       duplicateFurniture: (id) => dispatchAction({ type: 'DUPLICATE_FURNITURE', id }),
       reorderRoomInList: (activeId, overId) =>
         dispatchAction({ type: 'REORDER_ROOM', activeId, overId }),
-      splitRoomInPlan: (roomId) => dispatchAction({ type: 'SPLIT_ROOM', roomId }),
-      splitSelectedWall: (wallId) => dispatchAction({ type: 'SPLIT_WALL', wallId }),
+      disconnectSharedWall: (wallId) =>
+        dispatchAction({ type: 'DISCONNECT_SHARED_WALL', wallId }),
+      disconnectWallSegment: (wallId) =>
+        dispatchAction({ type: 'DISCONNECT_WALL_SEGMENT', wallId }),
+      disconnectCornerFromRoom: (vertexId, roomId) =>
+        dispatchAction({ type: 'DISCONNECT_VERTEX_ROOM', vertexId, roomId }),
       moveRoom: (roomId, point) => dispatchAction({ type: 'MOVE_ROOM', roomId, point }),
       resizeWall: (wallId, point, anchor) =>
         dispatchAction({ type: 'RESIZE_WALL', wallId, point, anchor }),
