@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useAuth } from '../context/AuthContext'
 import { useFloorPlan } from '../context/FloorPlanContext'
 import { exportPlanJson, importPlanJson } from '../utils/storage'
+import { requestView3dPointerLock } from '../utils/view3dPointerLock'
 import type { Tool, ViewMode } from '../types/floorPlan'
 
 const TOOLS: { id: Tool; label: string; hint: string }[] = [
@@ -31,7 +33,6 @@ export function Toolbar() {
     activePlanId,
     setTool,
     setViewMode,
-    setWalkMode,
     createNewPlan,
     switchPlan,
     deleteCurrentPlan,
@@ -162,7 +163,14 @@ export function Toolbar() {
               key={view.id}
               type="button"
               className={state.viewMode === view.id ? 'active' : ''}
-              onClick={() => setViewMode(view.id)}
+              onClick={() => {
+                if (view.id === 'view3d') {
+                  flushSync(() => setViewMode('view3d'))
+                  requestView3dPointerLock().catch(() => {})
+                } else {
+                  setViewMode(view.id)
+                }
+              }}
             >
               {view.label}
             </button>
@@ -248,15 +256,6 @@ export function Toolbar() {
             </button>
           </>
         )}
-        {state.viewMode === 'view3d' && (
-          <button
-            type="button"
-            className={state.walkMode ? 'active walk-btn' : 'walk-btn'}
-            onClick={() => setWalkMode(!state.walkMode)}
-          >
-            {state.walkMode ? 'Exit Walk' : 'Walk Through'}
-          </button>
-        )}
         <input
           ref={fileRef}
           type="file"
@@ -273,9 +272,9 @@ export function Toolbar() {
 
       {authError && <p className="toolbar-hint toolbar-error">{authError}</p>}
       {activeTool?.hint && <p className="toolbar-hint">{activeTool.hint}</p>}
-      {state.walkMode && (
+      {state.viewMode === 'view3d' && (
         <p className="toolbar-hint walk-hint">
-          Click the 3D view · WASD to move · mouse to look · Esc to exit pointer lock
+          WASD move · Space up · Shift down · Esc → 2D
         </p>
       )}
     </header>

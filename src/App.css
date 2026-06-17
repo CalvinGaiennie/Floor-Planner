@@ -20,8 +20,27 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
+}
+
+.workspace-pane {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspace-pane:not(.workspace-pane-active) {
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.workspace-pane-active {
+  visibility: visible;
+  pointer-events: auto;
+  z-index: 1;
 }
 
 .project-notes-root {
@@ -712,11 +731,6 @@ body.project-notes-resizing {
   border-color: #b91c1c;
 }
 
-.toolbar button.walk-btn.active {
-  background: #059669;
-  border-color: #10b981;
-}
-
 .toolbar-actions {
   margin-left: auto;
 }
@@ -1000,18 +1014,31 @@ body.project-notes-resizing {
 }
 
 .view3d-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
   display: flex;
   flex-direction: column;
-  height: 100%;
   min-height: 0;
   overflow: hidden;
   background: #0f172a;
+}
+
+.view3d-panel:not(.view3d-panel-active) {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.view3d-panel-active {
+  visibility: visible;
+  pointer-events: auto;
 }
 
 .view3d-canvas-wrap {
   position: relative;
   flex: 1;
   min-height: 0;
+  cursor: pointer;
 }
 
 .view3d-canvas-wrap canvas {
@@ -1019,18 +1046,36 @@ body.project-notes-resizing {
   height: 100% !important;
 }
 
-.walk-active .view3d-canvas-wrap {
-  cursor: pointer;
+.view3d-crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  pointer-events: none;
+  z-index: 2;
 }
 
-.walk-overlay-btn {
+.view3d-crosshair::before,
+.view3d-crosshair::after {
+  content: '';
   position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 2;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 12px;
-  background: rgba(15, 23, 42, 0.85);
-  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
 }
+
+.view3d-crosshair::before {
+  left: 6px;
+  top: 0;
+  width: 2px;
+  height: 14px;
+}
+
+.view3d-crosshair::after {
+  left: 0;
+  top: 6px;
+  width: 14px;
+  height: 2px;
+}
+

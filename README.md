@@ -25,7 +25,7 @@ Open the local URL shown in the terminal (usually `http://localhost:5173`).
 2. Select the room and edit **width**, **depth**, and **wall height** in the properties panel.
 3. Use **Door** / **Window** and click near a wall to place openings.
 4. Add **Furniture** from the catalog.
-5. Switch to **3D View** and use **Walk Through** to explore.
+5. Switch to **3D View** to walk through your plan (WASD, mouse look, Space up / Shift down for elevation).
 
 ## Units
 

@@ -82,7 +82,6 @@ interface EditorState {
   tool: Tool
   viewMode: ViewMode
   selectedId: string | null
-  walkMode: boolean
 }
 
 type RoomPatch = {
@@ -96,7 +95,6 @@ type RoomPatch = {
 type Action =
   | { type: 'SET_TOOL'; tool: Tool }
   | { type: 'SET_VIEW_MODE'; viewMode: ViewMode }
-  | { type: 'SET_WALK_MODE'; walkMode: boolean }
   | { type: 'SELECT'; id: string | null }
   | { type: 'SET_PLAN'; plan: FloorPlan }
   | { type: 'SET_PLAN_NAME'; name: string }
@@ -135,9 +133,7 @@ function reducer(state: EditorState, action: Action): EditorState {
     case 'SET_TOOL':
       return { ...state, tool: action.tool }
     case 'SET_VIEW_MODE':
-      return { ...state, viewMode: action.viewMode, walkMode: false }
-    case 'SET_WALK_MODE':
-      return { ...state, walkMode: action.walkMode }
+      return { ...state, viewMode: action.viewMode }
     case 'SELECT':
       return { ...state, selectedId: action.id }
     case 'SET_PLAN':
@@ -257,7 +253,6 @@ interface FloorPlanContextValue {
   activePlanId: string | null
   setTool: (tool: Tool) => void
   setViewMode: (mode: ViewMode) => void
-  setWalkMode: (walk: boolean) => void
   select: (id: string | null) => void
   setPlan: (plan: FloorPlan) => void
   setPlanName: (name: string) => void
@@ -293,7 +288,6 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     tool: 'select',
     viewMode: 'plan2d',
     selectedId: null,
-    walkMode: false,
   })
 
   const undoStackRef = useRef<FloorPlan[]>([])
@@ -603,7 +597,6 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       activePlanId,
       setTool: (tool) => dispatch({ type: 'SET_TOOL', tool }),
       setViewMode: (viewMode) => dispatch({ type: 'SET_VIEW_MODE', viewMode }),
-      setWalkMode: (walkMode) => dispatch({ type: 'SET_WALK_MODE', walkMode }),
       select: (id) => dispatch({ type: 'SELECT', id }),
       setPlan: (plan) => dispatchAction({ type: 'SET_PLAN', plan }),
       setPlanName: (name) => dispatchAction({ type: 'SET_PLAN_NAME', name }),

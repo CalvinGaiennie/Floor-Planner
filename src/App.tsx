@@ -29,7 +29,10 @@ function AppContent() {
       <Toolbar />
       <main className="app-main">
         <div className="app-main-workspace">
-          {viewMode === 'view3d' ? <View3D /> : <FloorPlanEditor />}
+          <div className={`workspace-pane${viewMode === 'plan2d' ? ' workspace-pane-active' : ''}`}>
+            <FloorPlanEditor />
+          </div>
+          <View3D />
           <ProjectNotesPanel />
         </div>
       </main>
