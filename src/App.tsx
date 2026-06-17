@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthContext'
 import { FloorPlanProvider, useFloorPlan } from './context/FloorPlanContext'
 import { FloorPlanEditor } from './components/FloorPlanEditor'
 import { ProjectNotesPanel } from './components/ProjectNotesPanel'
+import { FurniturePanel } from './components/FurniturePanel'
 import { RoomBottomBar } from './components/RoomBottomBar'
 import { Toolbar } from './components/Toolbar'
 import { View3D } from './components/View3D'
@@ -16,7 +17,7 @@ function AppContent() {
     const onWheel = (e: WheelEvent) => {
       const target = e.target
       if (!(target instanceof Element)) return
-      if (target.closest('input, select, textarea, .toolbar, .room-bottom-bar, .room-list-panel, .room-list-fab, .plan-panel, .project-notes-panel, .project-notes-fab')) return
+      if (target.closest('input, select, textarea, .toolbar, .room-bottom-bar, .room-list-panel, .room-list-fab, .plan-panel, .project-notes-panel, .project-notes-fab, .furniture-panel, .furniture-panel-fab')) return
       e.preventDefault()
     }
 
@@ -34,6 +35,7 @@ function AppContent() {
           </div>
           <View3D />
           <ProjectNotesPanel />
+          <FurniturePanel />
         </div>
       </main>
       {viewMode === 'plan2d' && (

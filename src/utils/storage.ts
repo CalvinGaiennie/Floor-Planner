@@ -9,6 +9,7 @@ import {
   type Room,
 } from '../types/floorPlan'
 import { migrateLegacyRectangleRoom, sanitizePlan } from './planModel'
+import { normalizeFurnitureList } from './furniture'
 
 const STORAGE_KEY = 'floor-planner-plan-v2'
 
@@ -45,8 +46,12 @@ export function normalizePlanFromJson(data: unknown): FloorPlan {
   return normalizePlan(data as LegacyPlan)
 }
 
+function withFurniture(plan: FloorPlan, raw: LegacyPlan): FloorPlan {
+  return { ...plan, furniture: normalizeFurnitureList(raw.furniture) }
+}
+
 function normalizePlan(raw: LegacyPlan): FloorPlan {
-  const base = createEmptyPlan(raw.name ?? 'My Home')
+  const base = withFurniture(createEmptyPlan(raw.name ?? 'My Home'), raw)
   if (typeof raw.notes === 'string') {
     base.notes = raw.notes
   }
@@ -64,6 +69,7 @@ function normalizePlan(raw: LegacyPlan): FloorPlan {
       vertices: raw.vertices as FloorPlan['vertices'],
       walls: raw.walls as FloorPlan['walls'],
       rooms: raw.rooms as Room[],
+      furniture: base.furniture,
     })
   }
 
@@ -79,6 +85,7 @@ function normalizePlan(raw: LegacyPlan): FloorPlan {
         vertices: raw.vertices as FloorPlan['vertices'],
         walls: raw.walls as FloorPlan['walls'],
         rooms: wallGraphRooms,
+        furniture: base.furniture,
       })
     }
   }

@@ -1,3 +1,5 @@
+import type { FurnitureItem } from './furniture'
+
 export type Tool = 'select' | 'room' | 'wall' | 'delete'
 
 export type ViewMode = 'plan2d' | 'view3d'
@@ -48,6 +50,7 @@ export interface FloorPlan {
   vertices: Vertex[]
   walls: PlanWall[]
   rooms: Room[]
+  furniture: FurnitureItem[]
 }
 
 export const DEFAULT_WALL_HEIGHT = 8
@@ -66,5 +69,6 @@ export function createEmptyPlan(name = 'My Home'): FloorPlan {
     vertices: [],
     walls: [],
     rooms: [],
+    furniture: [],
   }
 }

@@ -28,6 +28,19 @@ import {
   wallDragCursor,
   type WallDragAnchor,
 } from '../utils/planModel'
+import {
+  findFurnitureAtPoint,
+  furnitureCorners,
+  isFurnitureId,
+} from '../utils/furniture'
+import type { FurnitureCategory } from '../types/furniture'
+
+const FURNITURE_COLORS: Record<FurnitureCategory, { fill: string; stroke: string; label: string }> = {
+  bed: { fill: 'rgba(180, 83, 9, 0.38)', stroke: '#b45309', label: '#92400e' },
+  sofa: { fill: 'rgba(99, 102, 241, 0.38)', stroke: '#6366f1', label: '#4338ca' },
+  chair: { fill: 'rgba(16, 185, 129, 0.38)', stroke: '#10b981', label: '#047857' },
+  armchair: { fill: 'rgba(249, 115, 22, 0.38)', stroke: '#f97316', label: '#c2410c' },
+}
 
 function snapPlanPoint(plan: FloorPlan, point: Point2D): Point2D {
   const near = findVertexNear(plan, point)
@@ -82,9 +95,17 @@ export function FloorPlanEditor() {
     finishGeometryEdit,
     selectedRoom,
     setPlanName,
+    placementCatalogId,
+    setPlacementCatalogId,
+    placeFurniture,
+    moveFurnitureOnPlan,
+    furnitureCatalog,
   } = useFloorPlan()
 
   const { plan, tool, selectedId } = state
+  const placementEntry = placementCatalogId
+    ? furnitureCatalog.find((e) => e.id === placementCatalogId)
+    : null
 
   const scaleRef = useRef(scale)
   scaleRef.current = scale
@@ -152,7 +173,7 @@ export function FloorPlanEditor() {
 
     const onWheel = (e: WheelEvent) => {
       const target = e.target
-      if (target instanceof Element && target.closest('.panel-plan-name')) return
+      if (target instanceof Element && target.closest('.panel-plan-name, .furniture-panel')) return
 
       e.preventDefault()
       if (wallDragIdRef.current || vertexDragIdRef.current || moveDragIdRef.current) return
@@ -312,6 +333,10 @@ export function FloorPlanEditor() {
         }
       }
       if (bestWallId) return bestWallId
+
+      const furniture = findFurnitureAtPoint(plan, point)
+      if (furniture) return furniture.id
+
       for (const room of plan.rooms) {
         if (isPointInsideRoom(plan, point, room)) return room.id
       }
@@ -468,6 +493,43 @@ export function FloorPlanEditor() {
       ctx.restore()
     }
 
+    for (const item of plan.furniture) {
+      const corners = furnitureCorners(item)
+      const screenCorners = corners.map((c) => planToScreen(c, offset, scale))
+      const selected = item.id === selectedId
+      const colors = FURNITURE_COLORS[item.category]
+
+      ctx.beginPath()
+      ctx.moveTo(screenCorners[0].x, screenCorners[0].y)
+      for (let i = 1; i < screenCorners.length; i++) {
+        ctx.lineTo(screenCorners[i].x, screenCorners[i].y)
+      }
+      ctx.closePath()
+      ctx.fillStyle = selected ? 'rgba(59, 130, 246, 0.42)' : colors.fill
+      ctx.fill()
+      ctx.strokeStyle = selected ? '#1d4ed8' : colors.stroke
+      ctx.lineWidth = selected ? 2.5 : 1.5
+      ctx.stroke()
+
+      const center = planToScreen({ x: item.x, y: item.y }, offset, scale)
+      const screenW = item.width * PIXELS_PER_FOOT * scale
+      const screenD = item.depth * PIXELS_PER_FOOT * scale
+      const minDim = Math.min(screenW, screenD)
+      if (minDim >= 28) {
+        const fontSize = Math.min(9, Math.max(6, minDim * 0.12))
+        ctx.fillStyle = selected ? '#1e3a8a' : colors.label
+        ctx.font = `${fontSize}px system-ui`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        let label = item.label
+        const maxWidth = screenW * 0.85
+        while (label.length > 1 && ctx.measureText(label).width > maxWidth) {
+          label = `${label.slice(0, -2)}…`
+        }
+        ctx.fillText(label, center.x, center.y)
+      }
+    }
+
     for (const wall of planWalls) {
       const start = planToScreen(wall.start, offset, scale)
       const end = planToScreen(wall.end, offset, scale)
@@ -540,7 +602,19 @@ export function FloorPlanEditor() {
       ctx.strokeRect(preview.x - 20, preview.y - 16, 40, 32)
       ctx.setLineDash([])
     }
-  }, [plan, planWalls, offset, scale, selectedId, selectedRoom, cursorPlan, tool, wallPlaceStart])
+
+    if (placementEntry && cursorPlan) {
+      const hw = (placementEntry.width * PIXELS_PER_FOOT * scale) / 2
+      const hd = (placementEntry.depth * PIXELS_PER_FOOT * scale) / 2
+      const center = planToScreen(cursorPlan, offset, scale)
+      const colors = FURNITURE_COLORS[placementEntry.category]
+      ctx.strokeStyle = colors.stroke
+      ctx.lineWidth = 2
+      ctx.setLineDash([6, 4])
+      ctx.strokeRect(center.x - hw, center.y - hd, hw * 2, hd * 2)
+      ctx.setLineDash([])
+    }
+  }, [plan, planWalls, offset, scale, selectedId, selectedRoom, cursorPlan, tool, wallPlaceStart, placementEntry])
 
   useEffect(() => {
     draw()
@@ -578,6 +652,7 @@ export function FloorPlanEditor() {
 
       if (e.key === 'Escape' && !isEditableTarget(e.target)) {
         setWallPlaceStart(null)
+        if (placementCatalogId) setPlacementCatalogId(null)
         return
       }
 
@@ -626,7 +701,7 @@ export function FloorPlanEditor() {
       window.removeEventListener('keyup', onKeyUp)
       window.removeEventListener('blur', onBlur)
     }
-  }, [deleteSelected, selectedId])
+  }, [deleteSelected, selectedId, placementCatalogId, setPlacementCatalogId])
 
   const getPlanPoint = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current!.getBoundingClientRect()
@@ -634,7 +709,7 @@ export function FloorPlanEditor() {
     return screenToPlan({ x: e.clientX - rect.left, y: e.clientY - rect.top }, offset, scale)
   }
 
-  const isMovable = (id: string) => plan.rooms.some((r) => r.id === id)
+  const isRoomMovable = (id: string) => plan.rooms.some((r) => r.id === id)
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!offset) return
@@ -648,6 +723,11 @@ export function FloorPlanEditor() {
     if (e.button !== 0) return
 
     const point = getPlanPoint(e)
+
+    if (placementCatalogId) {
+      placeFurniture(placementCatalogId, point)
+      return
+    }
 
     if (tool === 'select') {
       const id = hitTest(point)
@@ -663,7 +743,12 @@ export function FloorPlanEditor() {
         wallDragIdRef.current = id
         setWallDragId(id)
         setDragging(true)
-      } else if (id && isMovable(id)) {
+      } else if (id && isFurnitureId(plan, id)) {
+        recordUndoSnapshot()
+        moveDragIdRef.current = id
+        setMoveDragId(id)
+        moveDragStartRef.current = point
+      } else if (id && plan.rooms.some((r) => r.id === id)) {
         recordUndoSnapshot()
         moveDragIdRef.current = id
         setMoveDragId(id)
@@ -735,7 +820,11 @@ export function FloorPlanEditor() {
         moveActive = true
       }
       if (moveActive) {
-        moveRoom(moveDragId, point)
+        if (isFurnitureId(plan, moveDragId)) {
+          moveFurnitureOnPlan(moveDragId, point)
+        } else {
+          moveRoom(moveDragId, point)
+        }
       }
     }
   }
@@ -764,7 +853,7 @@ export function FloorPlanEditor() {
     }
     if (dragging && moveDragId) return 'grabbing'
 
-    if (tool === 'room' || tool === 'wall') return 'crosshair'
+    if (tool === 'room' || tool === 'wall' || placementCatalogId) return 'crosshair'
 
     if (tool !== 'select') return 'default'
 
@@ -780,8 +869,10 @@ export function FloorPlanEditor() {
         if (wall) return wallDragCursor(wall)
       }
 
-      if (hoverId && isMovable(hoverId)) return 'grab'
+      if (hoverId && (isRoomMovable(hoverId) || isFurnitureId(plan, hoverId))) return 'grab'
     }
+
+    if (placementCatalogId) return 'crosshair'
 
     return 'default'
   }

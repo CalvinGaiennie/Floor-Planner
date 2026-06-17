@@ -1109,3 +1109,217 @@ body.project-notes-resizing {
   height: 2px;
 }
 
+.furniture-panel-root {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.furniture-panel-fab {
+  pointer-events: auto;
+  position: absolute;
+  bottom: 40px;
+  left: 12px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  background: rgba(17, 24, 39, 0.94);
+  color: #94a3b8;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.furniture-panel-fab:hover {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-color: #475569;
+}
+
+.furniture-panel-fab.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.furniture-panel-fab-icon {
+  display: block;
+}
+
+.furniture-panel {
+  pointer-events: auto;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 100%);
+  max-height: min(70vh, 520px);
+  border: 1px solid #334155;
+  border-bottom: none;
+  border-left: none;
+  border-radius: 12px 12px 0 0;
+  background: rgba(17, 24, 39, 0.97);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.furniture-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #1e293b;
+}
+
+.furniture-panel-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.furniture-panel-close {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.furniture-panel-close:hover {
+  color: #e2e8f0;
+}
+
+.furniture-panel-search {
+  padding: 8px 12px;
+  border-bottom: 1px solid #1e293b;
+}
+
+.furniture-panel-search input {
+  width: 100%;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+
+.furniture-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 12px 12px;
+}
+
+.furniture-panel-section h4 {
+  margin: 8px 0 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.furniture-panel-section:first-child h4 {
+  margin-top: 0;
+}
+
+.furniture-panel-empty {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.furniture-catalog-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.furniture-catalog-table th {
+  text-align: left;
+  color: #64748b;
+  font-weight: 500;
+  padding: 4px 4px 6px;
+  border-bottom: 1px solid #1e293b;
+}
+
+.furniture-catalog-table th:nth-child(2),
+.furniture-catalog-table th:nth-child(3),
+.furniture-catalog-table th:nth-child(4) {
+  width: 52px;
+}
+
+.furniture-catalog-table th:last-child {
+  width: 72px;
+}
+
+.furniture-catalog-table td {
+  padding: 4px;
+  vertical-align: middle;
+}
+
+.furniture-catalog-table tr.placing td {
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.furniture-catalog-name {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 0.8rem;
+}
+
+.furniture-catalog-dim {
+  width: 100%;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #e2e8f0;
+  border-radius: 4px;
+  padding: 4px 4px;
+  font-size: 0.8rem;
+}
+
+.furniture-place-btn {
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.furniture-place-btn:hover {
+  background: #334155;
+}
+
+.furniture-place-btn.active {
+  border-color: #2563eb;
+  background: #1d4ed8;
+  color: #fff;
+}
+
+.furniture-panel-hint {
+  padding: 8px 12px;
+  border-top: 1px solid #1e293b;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  background: rgba(37, 99, 235, 0.08);
+}
+

@@ -6,6 +6,7 @@ import { PointerLockControls as PointerLockControlsImpl } from 'three-stdlib'
 import { requestView3dPointerLock } from '../utils/view3dPointerLock'
 import { useFloorPlan } from '../context/FloorPlanContext'
 import type { Wall } from '../types/floorPlan'
+import type { FurnitureCategory, FurnitureItem } from '../types/furniture'
 import { pointOnWall, wallAngle, wallLength } from '../utils/geometry'
 import { WORKSPACE_SIZE } from '../utils/workspace'
 
@@ -58,16 +59,39 @@ function WallMesh({
   )
 }
 
+const FURNITURE_3D_COLORS: Record<FurnitureCategory, string> = {
+  bed: '#d97706',
+  sofa: '#818cf8',
+  chair: '#34d399',
+  armchair: '#fb923c',
+}
+
+function FurnitureMesh({ item, selected }: { item: FurnitureItem; selected: boolean }) {
+  return (
+    <mesh
+      position={[item.x, item.height / 2, item.y]}
+      rotation={[0, -item.rotation, 0]}
+      castShadow
+      receiveShadow
+    >
+      <boxGeometry args={[item.width, item.height, item.depth]} />
+      <meshStandardMaterial color={selected ? '#64748b' : FURNITURE_3D_COLORS[item.category]} />
+    </mesh>
+  )
+}
+
 function SceneContent({
   walls,
+  furniture,
   workspaceWidth,
   workspaceHeight,
-  selectedWallId,
+  selectedId,
 }: {
   walls: Wall[]
+  furniture: FurnitureItem[]
   workspaceWidth: number
   workspaceHeight: number
-  selectedWallId: string | null
+  selectedId: string | null
 }) {
   return (
     <>
@@ -100,8 +124,12 @@ function SceneContent({
           wall={wall}
           startOffset={0}
           endOffset={wallLength(wall)}
-          selected={wall.id === selectedWallId}
+          selected={wall.id === selectedId}
         />
+      ))}
+
+      {furniture.map((item) => (
+        <FurnitureMesh key={item.id} item={item} selected={item.id === selectedId} />
       ))}
     </>
   )
@@ -221,15 +249,17 @@ function WalkControls({ walls, active }: { walls: Wall[]; active: boolean }) {
 
 function Scene({
   walls,
+  furniture,
   workspaceWidth,
   workspaceHeight,
-  selectedWallId,
+  selectedId,
   active,
 }: {
   walls: Wall[]
+  furniture: FurnitureItem[]
   workspaceWidth: number
   workspaceHeight: number
-  selectedWallId: string | null
+  selectedId: string | null
   active: boolean
 }) {
   return (
@@ -237,9 +267,10 @@ function Scene({
       <WalkControls walls={walls} active={active} />
       <SceneContent
         walls={walls}
+        furniture={furniture}
         workspaceWidth={workspaceWidth}
         workspaceHeight={workspaceHeight}
-        selectedWallId={selectedWallId}
+        selectedId={selectedId}
       />
     </>
   )
@@ -285,9 +316,10 @@ export function View3D() {
           <Suspense fallback={null}>
             <Scene
               walls={planWalls}
+              furniture={state.plan.furniture}
               workspaceWidth={WORKSPACE_SIZE.width}
               workspaceHeight={WORKSPACE_SIZE.height}
-              selectedWallId={selectedId}
+              selectedId={selectedId}
               active={active}
             />
           </Suspense>

@@ -54,6 +54,17 @@ import {
   type PlanSummary,
   updateLocalPlanName,
 } from '../utils/storage'
+import {
+  addFurnitureFromCatalog,
+  deleteFurniture,
+  isFurnitureId,
+  moveFurniture,
+} from '../utils/furniture'
+import {
+  loadFurnitureCatalog,
+  saveFurnitureCatalog,
+} from '../data/furnitureCatalog'
+import type { FurnitureCatalogEntry } from '../types/furniture'
 import { snapToGrid } from '../utils/imperial'
 import { useAuth } from './AuthContext'
 import {
@@ -86,6 +97,7 @@ interface EditorState {
   tool: Tool
   viewMode: ViewMode
   selectedId: string | null
+  placementCatalogId: string | null
 }
 
 type RoomPatch = {
@@ -112,6 +124,9 @@ type Action =
   | { type: 'RESIZE_WALL'; wallId: string; point: { x: number; y: number }; anchor: WallDragAnchor }
   | { type: 'MOVE_VERTEX'; vertexId: string; point: { x: number; y: number } }
   | { type: 'ADD_WALL'; start: { x: number; y: number }; end: { x: number; y: number } }
+  | { type: 'ADD_FURNITURE'; entry: FurnitureCatalogEntry; point: { x: number; y: number } }
+  | { type: 'MOVE_FURNITURE'; id: string; point: { x: number; y: number } }
+  | { type: 'SET_PLACEMENT_CATALOG_ID'; catalogId: string | null }
   | { type: 'FINISH_GEOMETRY_EDIT' }
 
 const PLAN_UNDO_ACTIONS = new Set<Action['type']>([
@@ -124,9 +139,16 @@ const PLAN_UNDO_ACTIONS = new Set<Action['type']>([
   'RESIZE_WALL',
   'MOVE_VERTEX',
   'ADD_WALL',
+  'ADD_FURNITURE',
+  'MOVE_FURNITURE',
 ])
 
-const CONTINUOUS_UNDO_ACTIONS = new Set<Action['type']>(['MOVE_ROOM', 'RESIZE_WALL', 'MOVE_VERTEX'])
+const CONTINUOUS_UNDO_ACTIONS = new Set<Action['type']>([
+  'MOVE_ROOM',
+  'RESIZE_WALL',
+  'MOVE_VERTEX',
+  'MOVE_FURNITURE',
+])
 
 function snapPoint(point: { x: number; y: number }) {
   return { x: snapToGrid(point.x), y: snapToGrid(point.y) }
@@ -182,7 +204,9 @@ function reducer(state: EditorState, action: Action): EditorState {
       if (!state.selectedId) return state
       const id = state.selectedId
       let nextState: EditorState
-      if (isPlanWallId(state.plan, id)) {
+      if (isFurnitureId(state.plan, id)) {
+        nextState = { ...state, selectedId: null, plan: deleteFurniture(state.plan, id) }
+      } else if (isPlanWallId(state.plan, id)) {
         nextState = { ...state, selectedId: null, plan: deleteWall(state.plan, id) }
       } else {
         const room =
@@ -243,6 +267,26 @@ function reducer(state: EditorState, action: Action): EditorState {
         tool: 'select',
       }
     }
+    case 'ADD_FURNITURE': {
+      const plan = addFurnitureFromCatalog(state.plan, action.entry, snapPoint(action.point))
+      const item = plan.furniture[plan.furniture.length - 1]
+      return {
+        ...state,
+        plan,
+        selectedId: item?.id ?? state.selectedId,
+        placementCatalogId: null,
+        tool: 'select',
+      }
+    }
+    case 'MOVE_FURNITURE': {
+      return {
+        ...state,
+        plan: moveFurniture(state.plan, action.id, snapPoint(action.point)),
+      }
+    }
+    case 'SET_PLACEMENT_CATALOG_ID': {
+      return { ...state, placementCatalogId: action.catalogId, tool: 'select' }
+    }
     case 'FINISH_GEOMETRY_EDIT': {
       return { ...state, plan: sanitizePlan(state.plan) }
     }
@@ -263,6 +307,15 @@ interface FloorPlanContextValue {
   setPlanNotes: (notes: string) => void
   masterNote: string
   setMasterNote: (note: string) => void
+  furnitureCatalog: FurnitureCatalogEntry[]
+  updateCatalogEntry: (
+    id: string,
+    patch: Partial<Pick<FurnitureCatalogEntry, 'label' | 'width' | 'depth' | 'height'>>,
+  ) => void
+  placementCatalogId: string | null
+  setPlacementCatalogId: (catalogId: string | null) => void
+  placeFurniture: (catalogId: string, point: { x: number; y: number }) => void
+  moveFurnitureOnPlan: (id: string, point: { x: number; y: number }) => void
   addRoom: (point: { x: number; y: number }) => void
   updateRoom: (id: string, patch: RoomPatch) => void
   deleteSelected: () => void
@@ -295,7 +348,11 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     tool: 'select',
     viewMode: 'plan2d',
     selectedId: null,
+    placementCatalogId: null,
   })
+  const [furnitureCatalog, setFurnitureCatalogState] = useState<FurnitureCatalogEntry[]>(
+    () => loadFurnitureCatalog(),
+  )
 
   const undoStackRef = useRef<FloorPlan[]>([])
   const redoStackRef = useRef<FloorPlan[]>([])
@@ -643,6 +700,40 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     resetUndoStacks()
   }, [flushCloudSave, user, resetUndoStacks])
 
+  const updateCatalogEntry = useCallback(
+    (
+      id: string,
+      patch: Partial<Pick<FurnitureCatalogEntry, 'label' | 'width' | 'depth' | 'height'>>,
+    ) => {
+      setFurnitureCatalogState((prev) => {
+        const next = prev.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry))
+        saveFurnitureCatalog(next)
+        return next
+      })
+    },
+    [],
+  )
+
+  const setPlacementCatalogId = useCallback((catalogId: string | null) => {
+    dispatch({ type: 'SET_PLACEMENT_CATALOG_ID', catalogId })
+  }, [])
+
+  const placeFurniture = useCallback(
+    (catalogId: string, point: { x: number; y: number }) => {
+      const entry = furnitureCatalog.find((e) => e.id === catalogId)
+      if (!entry) return
+      dispatchAction({ type: 'ADD_FURNITURE', entry, point })
+    },
+    [furnitureCatalog, dispatchAction],
+  )
+
+  const moveFurnitureOnPlan = useCallback(
+    (id: string, point: { x: number; y: number }) => {
+      dispatchAction({ type: 'MOVE_FURNITURE', id, point })
+    },
+    [dispatchAction],
+  )
+
   const value = useMemo<FloorPlanContextValue>(
     () => ({
       state,
@@ -656,6 +747,12 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       setPlanNotes: (notes) => dispatchAction({ type: 'SET_PLAN_NOTES', notes }),
       masterNote,
       setMasterNote,
+      furnitureCatalog,
+      updateCatalogEntry,
+      placementCatalogId: state.placementCatalogId,
+      setPlacementCatalogId,
+      placeFurniture,
+      moveFurnitureOnPlan,
       addRoom: (point) => dispatchAction({ type: 'ADD_ROOM', point }),
       updateRoom: (id, patch) => dispatchAction({ type: 'UPDATE_ROOM', id, patch }),
       deleteSelected: () => dispatchAction({ type: 'DELETE_SELECTED' }),
@@ -681,6 +778,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       planSummaries,
       activePlanId,
       masterNote,
+      furnitureCatalog,
       planWalls,
       selectedRoom,
       recordUndoSnapshot,
@@ -691,6 +789,10 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       deleteCurrentPlan,
       dispatchAction,
       setMasterNote,
+      updateCatalogEntry,
+      setPlacementCatalogId,
+      placeFurniture,
+      moveFurnitureOnPlan,
     ],
   )
 
