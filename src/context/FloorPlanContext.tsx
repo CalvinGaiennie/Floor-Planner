@@ -40,6 +40,7 @@ import {
   createLocalPlan,
   deleteLocalPlan,
   loadLocalPlansSession,
+  mirrorPlanLocally,
   nextDefaultPlanName,
   saveActivePlanIdLocal,
   savePlan,
@@ -94,6 +95,7 @@ type Action =
   | { type: 'SELECT'; id: string | null }
   | { type: 'SET_PLAN'; plan: FloorPlan }
   | { type: 'SET_PLAN_NAME'; name: string }
+  | { type: 'SET_PLAN_NOTES'; notes: string }
   | { type: 'RESTORE_PLAN'; plan: FloorPlan }
   | { type: 'ADD_ROOM'; point: { x: number; y: number } }
   | { type: 'UPDATE_ROOM'; id: string; patch: RoomPatch }
@@ -137,6 +139,8 @@ function reducer(state: EditorState, action: Action): EditorState {
       return { ...state, plan: action.plan, selectedId: null }
     case 'SET_PLAN_NAME':
       return { ...state, plan: { ...state.plan, name: action.name } }
+    case 'SET_PLAN_NOTES':
+      return { ...state, plan: { ...state.plan, notes: action.notes } }
     case 'RESTORE_PLAN':
       return { ...state, plan: action.plan }
     case 'ADD_ROOM': {
@@ -238,6 +242,7 @@ interface FloorPlanContextValue {
   select: (id: string | null) => void
   setPlan: (plan: FloorPlan) => void
   setPlanName: (name: string) => void
+  setPlanNotes: (notes: string) => void
   addRoom: (point: { x: number; y: number }) => void
   updateRoom: (id: string, patch: RoomPatch) => void
   deleteSelected: () => void
@@ -280,6 +285,9 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   activePlanIdRef.current = activePlanId
   const cloudSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const skipNextCloudSaveRef = useRef(false)
+  const skipPlanPersistenceRef = useRef(false)
+  const planSummariesRef = useRef(planSummaries)
+  planSummariesRef.current = planSummaries
 
   const flushCloudSave = useCallback(async () => {
     const planId = activePlanIdRef.current
@@ -369,6 +377,11 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!planReady || !activePlanId) return
 
+    if (skipPlanPersistenceRef.current) {
+      skipPlanPersistenceRef.current = false
+      return
+    }
+
     savePlan(state.plan)
     savePlanForId(activePlanId, state.plan)
     setPlanSummaries((prev) =>
@@ -432,77 +445,137 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   }, [state.plan, state.selectedId])
 
   const createNewPlan = useCallback(async () => {
-    await flushCloudSave()
-    const name = nextDefaultPlanName(planSummaries)
+    try {
+      await flushCloudSave()
+    } catch {
+      // Don't block creating a new plan if the current one fails to save.
+    }
+
+    const summaries = planSummariesRef.current
+    const name = nextDefaultPlanName(summaries)
     const plan = createEmptyPlan(name)
+    let planId: string | null = null
 
     if (user && isFirebaseConfigured()) {
-      const planId = await createPlanInFirestore(user.uid, plan)
-      skipNextCloudSaveRef.current = true
-      setPlanSummaries((prev) => [...prev, { id: planId, name: plan.name }])
-      setActivePlanId(planId)
-      dispatchAction({ type: 'SET_PLAN', plan })
-    } else {
-      const planId = createLocalPlan(plan)
-      skipNextCloudSaveRef.current = true
-      setPlanSummaries((prev) => [...prev, { id: planId, name: plan.name }])
-      setActivePlanId(planId)
-      dispatchAction({ type: 'SET_PLAN', plan })
+      try {
+        planId = await createPlanInFirestore(user.uid, plan)
+      } catch {
+        planId = null
+      }
     }
+
+    if (!planId) {
+      planId = createLocalPlan(plan)
+    } else {
+      mirrorPlanLocally(planId, plan)
+    }
+
+    skipPlanPersistenceRef.current = true
+    skipNextCloudSaveRef.current = true
+    setPlanSummaries((prev) =>
+      prev.some((p) => p.id === planId) ? prev : [...prev, { id: planId!, name: plan.name }],
+    )
+    setActivePlanId(planId)
+    dispatch({ type: 'SET_PLAN', plan })
     resetUndoStacks()
-  }, [flushCloudSave, planSummaries, user, dispatchAction, resetUndoStacks])
+  }, [flushCloudSave, user, resetUndoStacks])
 
   const switchPlan = useCallback(
     async (planId: string) => {
-      if (planId === activePlanId) return
-      await flushCloudSave()
+      if (!planId) return
 
-      let plan: FloorPlan | null = null
+      const currentId = activePlanIdRef.current
+      if (planId !== currentId) {
+        try {
+          await flushCloudSave()
+        } catch {
+          // Continue switching even if saving the current plan fails.
+        }
+
+        if (cloudSaveTimerRef.current) {
+          clearTimeout(cloudSaveTimerRef.current)
+          cloudSaveTimerRef.current = null
+        }
+      }
+
+      let plan: FloorPlan | null = loadPlanForId(planId)
+
       if (user && isFirebaseConfigured()) {
-        plan = await loadPlanFromFirestore(user.uid, planId)
-        await setActivePlanIdInFirestore(user.uid, planId)
+        try {
+          const cloudPlan = await loadPlanFromFirestore(user.uid, planId)
+          if (cloudPlan) {
+            plan = cloudPlan
+            mirrorPlanLocally(planId, cloudPlan)
+          }
+          await setActivePlanIdInFirestore(user.uid, planId)
+        } catch {
+          // Use local copy when cloud load fails.
+        }
       } else {
-        plan = loadPlanForId(planId)
         saveActivePlanIdLocal(planId)
       }
 
       skipNextCloudSaveRef.current = true
+      skipPlanPersistenceRef.current = true
       setActivePlanId(planId)
-      dispatch({ type: 'SET_PLAN', plan: plan ?? createEmptyPlan() })
+      dispatch({
+        type: 'SET_PLAN',
+        plan: plan ?? createEmptyPlan(planSummariesRef.current.find((p) => p.id === planId)?.name),
+      })
       resetUndoStacks()
     },
-    [activePlanId, flushCloudSave, user, resetUndoStacks],
+    [flushCloudSave, user, resetUndoStacks],
   )
 
   const deleteCurrentPlan = useCallback(async () => {
-    if (!activePlanId || planSummaries.length <= 1) return
-    await flushCloudSave()
+    const currentId = activePlanIdRef.current
+    const summaries = planSummariesRef.current
+    if (!currentId || summaries.length <= 1) return
 
-    const remaining = planSummaries.filter((p) => p.id !== activePlanId)
+    try {
+      await flushCloudSave()
+    } catch {
+      // Continue even if saving the current plan fails.
+    }
+
+    if (cloudSaveTimerRef.current) {
+      clearTimeout(cloudSaveTimerRef.current)
+      cloudSaveTimerRef.current = null
+    }
+
+    const remaining = summaries.filter((p) => p.id !== currentId)
     const nextId = remaining[0]?.id
     if (!nextId) return
 
     if (user && isFirebaseConfigured()) {
-      await deletePlanFromFirestore(user.uid, activePlanId)
-      await setActivePlanIdInFirestore(user.uid, nextId)
-    } else {
-      deleteLocalPlan(activePlanId)
-      saveActivePlanIdLocal(nextId)
+      try {
+        await deletePlanFromFirestore(user.uid, currentId)
+        await setActivePlanIdInFirestore(user.uid, nextId)
+      } catch {
+        // Fall back to local-only delete below.
+      }
     }
 
-    let plan: FloorPlan | null = null
-    if (user && isFirebaseConfigured()) {
-      plan = await loadPlanFromFirestore(user.uid, nextId)
-    } else {
-      plan = loadPlanForId(nextId)
+    deleteLocalPlan(currentId)
+    saveActivePlanIdLocal(nextId)
+
+    let plan: FloorPlan | null = loadPlanForId(nextId)
+    if (!plan && user && isFirebaseConfigured()) {
+      try {
+        plan = await loadPlanFromFirestore(user.uid, nextId)
+        if (plan) mirrorPlanLocally(nextId, plan)
+      } catch {
+        plan = null
+      }
     }
 
+    skipPlanPersistenceRef.current = true
     skipNextCloudSaveRef.current = true
     setPlanSummaries(remaining)
     setActivePlanId(nextId)
     dispatch({ type: 'SET_PLAN', plan: plan ?? createEmptyPlan(remaining[0].name) })
     resetUndoStacks()
-  }, [activePlanId, planSummaries, flushCloudSave, user, resetUndoStacks])
+  }, [flushCloudSave, user, resetUndoStacks])
 
   const value = useMemo<FloorPlanContextValue>(
     () => ({
@@ -515,6 +588,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       select: (id) => dispatch({ type: 'SELECT', id }),
       setPlan: (plan) => dispatchAction({ type: 'SET_PLAN', plan }),
       setPlanName: (name) => dispatchAction({ type: 'SET_PLAN_NAME', name }),
+      setPlanNotes: (notes) => dispatchAction({ type: 'SET_PLAN_NOTES', notes }),
       addRoom: (point) => dispatchAction({ type: 'ADD_ROOM', point }),
       updateRoom: (id, patch) => dispatchAction({ type: 'UPDATE_ROOM', id, patch }),
       deleteSelected: () => dispatchAction({ type: 'DELETE_SELECTED' }),

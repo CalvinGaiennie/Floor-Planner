@@ -28,6 +28,7 @@ type LegacyRectangleRoom = {
 
 type LegacyPlan = {
   name?: string
+  notes?: string
   vertices?: unknown[]
   walls?: unknown[]
   rooms?: LegacyRectangleRoom[]
@@ -46,6 +47,9 @@ export function normalizePlanFromJson(data: unknown): FloorPlan {
 
 function normalizePlan(raw: LegacyPlan): FloorPlan {
   const base = createEmptyPlan(raw.name ?? 'My Home')
+  if (typeof raw.notes === 'string') {
+    base.notes = raw.notes
+  }
   const hasWallGraph = Array.isArray(raw.vertices) && Array.isArray(raw.walls)
 
   if (
@@ -56,6 +60,7 @@ function normalizePlan(raw: LegacyPlan): FloorPlan {
   ) {
     return sanitizePlan({
       name: raw.name ?? base.name,
+      notes: typeof raw.notes === 'string' ? raw.notes : base.notes,
       vertices: raw.vertices as FloorPlan['vertices'],
       walls: raw.walls as FloorPlan['walls'],
       rooms: raw.rooms as Room[],
@@ -70,6 +75,7 @@ function normalizePlan(raw: LegacyPlan): FloorPlan {
     if (wallGraphRooms.length > 0) {
       plan = sanitizePlan({
         name: raw.name ?? base.name,
+        notes: typeof raw.notes === 'string' ? raw.notes : base.notes,
         vertices: raw.vertices as FloorPlan['vertices'],
         walls: raw.walls as FloorPlan['walls'],
         rooms: wallGraphRooms,
@@ -229,6 +235,15 @@ export function createLocalPlan(plan: FloorPlan): string {
   writePlansIndex(plans)
   saveActivePlanIdLocal(planId)
   return planId
+}
+
+export function mirrorPlanLocally(planId: string, plan: FloorPlan): void {
+  savePlanForId(planId, plan)
+  const plans = readPlansIndex()
+  if (!plans.some((p) => p.id === planId)) {
+    writePlansIndex([...plans, { id: planId, name: plan.name }])
+  }
+  saveActivePlanIdLocal(planId)
 }
 
 export function deleteLocalPlan(planId: string): void {

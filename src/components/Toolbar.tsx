@@ -1,15 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useFloorPlan } from '../context/FloorPlanContext'
 import { exportPlanJson, importPlanJson } from '../utils/storage'
 import type { Tool, ViewMode } from '../types/floorPlan'
-import { workspaceCenter, WORKSPACE_SIZE } from '../utils/workspace'
 
 const TOOLS: { id: Tool; label: string; hint: string }[] = [
-  { id: 'select', label: 'Select', hint: 'Drag corners or walls · Delete key removes selected wall or room' },
+  { id: 'select', label: 'Select', hint: '' },
   { id: 'wall', label: 'Wall', hint: 'Click two points to place a wall · snaps to existing corners' },
   { id: 'room', label: 'Insert Room', hint: 'Click on the plan to place a room' },
-  { id: 'delete', label: 'Delete', hint: 'Click a wall or room to delete it' },
 ]
 
 const VIEWS: { id: ViewMode; label: string }[] = [
@@ -20,7 +18,13 @@ const VIEWS: { id: ViewMode; label: string }[] = [
 export function Toolbar() {
   const fileRef = useRef<HTMLInputElement>(null)
   const accountMenuRef = useRef<HTMLDivElement>(null)
+  const planMenuRef = useRef<HTMLDivElement>(null)
+  const planBtnRef = useRef<HTMLButtonElement>(null)
+  const accountBtnRef = useRef<HTMLButtonElement>(null)
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
+  const [planMenuOpen, setPlanMenuOpen] = useState(false)
+  const [planMenuPos, setPlanMenuPos] = useState({ top: 0, left: 0 })
+  const [accountMenuPos, setAccountMenuPos] = useState({ top: 0, right: 0 })
   const {
     state,
     planSummaries,
@@ -28,7 +32,6 @@ export function Toolbar() {
     setTool,
     setViewMode,
     setWalkMode,
-    addRoom,
     createNewPlan,
     switchPlan,
     deleteCurrentPlan,
@@ -54,6 +57,30 @@ export function Toolbar() {
     return () => window.removeEventListener('pointerdown', onPointerDown)
   }, [accountMenuOpen])
 
+  useEffect(() => {
+    if (!planMenuOpen) return
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (planMenuRef.current?.contains(e.target as Node)) return
+      setPlanMenuOpen(false)
+    }
+
+    window.addEventListener('pointerdown', onPointerDown)
+    return () => window.removeEventListener('pointerdown', onPointerDown)
+  }, [planMenuOpen])
+
+  useLayoutEffect(() => {
+    if (!planMenuOpen || !planBtnRef.current) return
+    const rect = planBtnRef.current.getBoundingClientRect()
+    setPlanMenuPos({ top: rect.bottom + 6, left: rect.left })
+  }, [planMenuOpen, state.plan.name])
+
+  useLayoutEffect(() => {
+    if (!accountMenuOpen || !accountBtnRef.current) return
+    const rect = accountBtnRef.current.getBoundingClientRect()
+    setAccountMenuPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right })
+  }, [accountMenuOpen, accountLabel])
+
   return (
     <header className="toolbar">
       <div className="toolbar-brand">
@@ -62,16 +89,42 @@ export function Toolbar() {
       </div>
 
       <div className="toolbar-group toolbar-plans">
-        <select
-          className="toolbar-plan-select"
-          value={activePlanId ?? ''}
-          onChange={(e) => switchPlan(e.target.value)}
-          aria-label="Select floor plan"
-        >
-          {planSummaries.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
+        <div className="toolbar-plan-picker" ref={planMenuRef}>
+          <button
+            ref={planBtnRef}
+            type="button"
+            className={`toolbar-plan-btn${planMenuOpen ? ' open' : ''}`}
+            aria-expanded={planMenuOpen}
+            aria-haspopup="menu"
+            aria-label="Select floor plan"
+            onClick={() => setPlanMenuOpen((open) => !open)}
+          >
+            <span className="toolbar-plan-btn-label">{state.plan.name}</span>
+            <span className="toolbar-plan-chevron" aria-hidden="true" />
+          </button>
+          {planMenuOpen && (
+            <div
+              className="toolbar-plan-menu"
+              role="menu"
+              style={{ top: planMenuPos.top, left: planMenuPos.left }}
+            >
+              {planSummaries.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  role="menuitem"
+                  className={p.id === activePlanId ? 'active' : ''}
+                  onClick={() => {
+                    switchPlan(p.id)
+                    setPlanMenuOpen(false)
+                  }}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <button type="button" onClick={() => createNewPlan()} title="New home">
           + New
         </button>
@@ -102,16 +155,6 @@ export function Toolbar() {
       </div>
 
       <div className="toolbar-group">
-        <button
-          type="button"
-          className="primary"
-          onClick={() => addRoom(workspaceCenter(WORKSPACE_SIZE))}
-        >
-          + Insert Room
-        </button>
-      </div>
-
-      <div className="toolbar-group">
         <span className="toolbar-label">View</span>
         <div className="toolbar-buttons">
           {VIEWS.map((view) => (
@@ -131,6 +174,7 @@ export function Toolbar() {
         {firebaseEnabled && (
           <div className="toolbar-auth" ref={accountMenuRef}>
             <button
+              ref={accountBtnRef}
               type="button"
               className={`toolbar-account-btn${accountMenuOpen ? ' open' : ''}`}
               title={user?.email ?? 'Account menu'}
@@ -142,7 +186,11 @@ export function Toolbar() {
               <span className="toolbar-account-chevron" aria-hidden="true" />
             </button>
             {accountMenuOpen && (
-              <div className="toolbar-account-menu" role="menu">
+              <div
+                className="toolbar-account-menu"
+                role="menu"
+                style={{ top: accountMenuPos.top, right: accountMenuPos.right }}
+              >
                 <button
                   type="button"
                   role="menuitem"
@@ -224,7 +272,7 @@ export function Toolbar() {
       </div>
 
       {authError && <p className="toolbar-hint toolbar-error">{authError}</p>}
-      {activeTool && <p className="toolbar-hint">{activeTool.hint}</p>}
+      {activeTool?.hint && <p className="toolbar-hint">{activeTool.hint}</p>}
       {state.walkMode && (
         <p className="toolbar-hint walk-hint">
           Click the 3D view · WASD to move · mouse to look · Esc to exit pointer lock

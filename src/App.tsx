@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { AuthProvider } from './context/AuthContext'
 import { FloorPlanProvider, useFloorPlan } from './context/FloorPlanContext'
 import { FloorPlanEditor } from './components/FloorPlanEditor'
+import { ProjectNotesPanel } from './components/ProjectNotesPanel'
 import { RoomBottomBar } from './components/RoomBottomBar'
 import { Toolbar } from './components/Toolbar'
 import { View3D } from './components/View3D'
@@ -15,7 +16,7 @@ function AppContent() {
     const onWheel = (e: WheelEvent) => {
       const target = e.target
       if (!(target instanceof Element)) return
-      if (target.closest('input, select, textarea, .toolbar, .room-bottom-bar, .room-list-panel, .plan-panel')) return
+      if (target.closest('input, select, textarea, .toolbar, .room-bottom-bar, .room-list-panel, .plan-panel, .project-notes-panel, .project-notes-fab')) return
       e.preventDefault()
     }
 
@@ -27,7 +28,10 @@ function AppContent() {
     <div className="app">
       <Toolbar />
       <main className="app-main">
-        {viewMode === 'view3d' ? <View3D /> : <FloorPlanEditor />}
+        <div className="app-main-workspace">
+          {viewMode === 'view3d' ? <View3D /> : <FloorPlanEditor />}
+          <ProjectNotesPanel />
+        </div>
       </main>
       {viewMode === 'plan2d' && (
         <div className="app-footer">

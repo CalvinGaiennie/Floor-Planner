@@ -44,6 +44,7 @@ export interface Wall {
 
 export interface FloorPlan {
   name: string
+  notes: string
   vertices: Vertex[]
   walls: PlanWall[]
   rooms: Room[]
@@ -61,6 +62,7 @@ export const MAX_WALL_LENGTH = 80
 export function createEmptyPlan(name = 'My Home'): FloorPlan {
   return {
     name,
+    notes: '',
     vertices: [],
     walls: [],
     rooms: [],
