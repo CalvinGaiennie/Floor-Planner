@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { RoomListPanel } from './RoomListPanel'
 import { useFloorPlan } from '../context/FloorPlanContext'
 import {
   FURNITURE_CATALOG,
@@ -726,6 +727,7 @@ export function FloorPlanEditor() {
         </div>
       </div>
       <div className="plan-canvas-area" ref={containerRef}>
+        <RoomListPanel />
         <canvas
           ref={canvasRef}
           className="plan-canvas"

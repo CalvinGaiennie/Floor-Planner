@@ -15,6 +15,125 @@
   flex-direction: column;
 }
 
+.room-list-panel {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  width: 148px;
+  max-height: calc(100% - 16px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: rgba(17, 24, 39, 0.92);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
+}
+
+.room-list-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-bottom: 1px solid #1e293b;
+}
+
+.room-list-header h2 {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+}
+
+.room-list-count {
+  font-size: 0.65rem;
+  color: #64748b;
+  background: #1e293b;
+  border-radius: 999px;
+  padding: 0 5px;
+  line-height: 1.5;
+}
+
+.room-list-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+}
+
+.room-list-empty {
+  margin: 8px;
+  font-size: 0.65rem;
+  line-height: 1.35;
+  color: #64748b;
+}
+
+.room-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.room-list-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 5px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #e2e8f0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.room-list-item:hover {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: #334155;
+}
+
+.room-list-item.selected {
+  background: rgba(23, 37, 84, 0.95);
+  border-color: #2563eb;
+}
+
+.room-thumb-svg {
+  flex-shrink: 0;
+  display: block;
+}
+
+.room-list-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+
+.room-list-name {
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.room-list-size {
+  font-size: 0.6rem;
+  color: #94a3b8;
+  line-height: 1.25;
+}
+
 .app-footer {
   min-height: 0;
   overflow: hidden;

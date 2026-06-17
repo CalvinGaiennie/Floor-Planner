@@ -14,7 +14,7 @@ function AppContent() {
     const onWheel = (e: WheelEvent) => {
       const target = e.target
       if (!(target instanceof Element)) return
-      if (target.closest('input, select, textarea, .toolbar, .room-bottom-bar, .panel-zoom-bar')) return
+      if (target.closest('input, select, textarea, .toolbar, .room-bottom-bar, .panel-zoom-bar, .room-list-panel')) return
       e.preventDefault()
     }
 
