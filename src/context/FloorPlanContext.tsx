@@ -423,14 +423,44 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   activePlanIdRef.current = activePlanId
   const masterNoteCloudSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const skipNextCloudSaveRef = useRef(false)
+  const consecutiveSaveFailuresRef = useRef(0)
+  const saveGenerationRef = useRef(0)
   const planSummariesRef = useRef(planSummaries)
   planSummariesRef.current = planSummaries
 
+  const CLOUD_SAVE_ERROR =
+    'Your last two changes could not be saved to the cloud. Check your connection and try again.'
+
+  const persistPlanToCloud = useCallback(
+    async (plan: FloorPlan, planId: string): Promise<boolean> => {
+      if (!user || !planId || !isFirebaseConfigured()) return true
+
+      const generation = ++saveGenerationRef.current
+      try {
+        await savePlanToFirestore(user.uid, planId, plan)
+        if (generation === saveGenerationRef.current) {
+          consecutiveSaveFailuresRef.current = 0
+          setSyncError(null)
+        }
+        return true
+      } catch {
+        if (generation === saveGenerationRef.current) {
+          consecutiveSaveFailuresRef.current += 1
+          if (consecutiveSaveFailuresRef.current >= 2) {
+            setSyncError(CLOUD_SAVE_ERROR)
+          }
+        }
+        return false
+      }
+    },
+    [user],
+  )
+
   const flushCloudSave = useCallback(async () => {
     const planId = activePlanIdRef.current
-    if (!user || !planId || !isFirebaseConfigured()) return
-    await savePlanToFirestore(user.uid, planId, planRef.current)
-  }, [user])
+    if (!planId) return
+    await persistPlanToCloud(planRef.current, planId)
+  }, [persistPlanToCloud])
 
   const resetUndoStacks = useCallback(() => {
     undoStackRef.current = []
@@ -493,6 +523,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
         if (user && isFirebaseConfigured()) {
           const session = await loadUserPlansSession(user.uid)
           if (cancelled) return
+          consecutiveSaveFailuresRef.current = 0
+          saveGenerationRef.current = 0
           setSyncError(null)
           skipNextCloudSaveRef.current = true
           setPlanSummaries(session.plans)
@@ -574,10 +606,20 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    savePlanToFirestore(user.uid, activePlanId, planRef.current).catch(() => {
-      setSyncError('Could not save to the cloud. Check your connection and try again.')
-    })
-  }, [state.plan, user, planReady, activePlanId])
+    persistPlanToCloud(planRef.current, activePlanId)
+  }, [state.plan, user, planReady, activePlanId, persistPlanToCloud])
+
+  useEffect(() => {
+    const onPageHide = () => {
+      const planId = activePlanIdRef.current
+      const uid = user?.uid
+      if (!planId || !uid || !isFirebaseConfigured()) return
+      savePlanToFirestore(uid, planId, planRef.current).catch(() => {})
+    }
+
+    window.addEventListener('pagehide', onPageHide)
+    return () => window.removeEventListener('pagehide', onPageHide)
+  }, [user])
 
   useEffect(() => {
     return () => {

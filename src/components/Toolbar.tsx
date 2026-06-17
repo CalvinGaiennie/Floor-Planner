@@ -290,7 +290,11 @@ export function Toolbar() {
       </div>
 
       {authError && <p className="toolbar-hint toolbar-error">{authError}</p>}
-      {syncError && <p className="toolbar-hint toolbar-error">{syncError}</p>}
+      {syncError && (
+        <p className="toolbar-hint toolbar-error toolbar-sync-error" role="alert">
+          {syncError}
+        </p>
+      )}
       {activeTool?.hint && <p className="toolbar-hint">{activeTool.hint}</p>}
       {state.viewMode === 'view3d' && (
         <p className="toolbar-hint walk-hint">
