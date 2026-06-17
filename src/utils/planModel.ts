@@ -745,6 +745,61 @@ export function connectVertexCorner(plan: FloorPlan, vertexId: string): FloorPla
   return sanitizePlan(planState)
 }
 
+export function getLinkedRoomIds(plan: FloorPlan, roomId: string): string[] {
+  const room = getRoom(plan, roomId)
+  if (!room) return []
+
+  const linked = new Set<string>()
+
+  for (const wallId of room.wallIds) {
+    if (isRoomsConnectedAtWall(plan, wallId)) {
+      for (const id of getSharedWallRoomIds(plan, wallId)) {
+        if (id !== roomId) linked.add(id)
+      }
+    }
+  }
+
+  for (const vid of roomVertexIds(plan, room)) {
+    for (const id of getRoomsAtVertex(plan, vid)) {
+      if (id !== roomId) linked.add(id)
+    }
+  }
+
+  return [...linked]
+}
+
+export function disconnectRooms(
+  plan: FloorPlan,
+  roomId: string,
+  otherRoomId: string,
+): FloorPlan {
+  if (roomId === otherRoomId) return plan
+
+  let planState = plan
+  const room = getRoom(planState, roomId)
+  if (!room) return plan
+
+  for (const wallId of room.wallIds) {
+    if (
+      isRoomsConnectedAtWall(planState, wallId) &&
+      getSharedWallRoomIds(planState, wallId).includes(otherRoomId)
+    ) {
+      planState = disconnectRoomsAtWall(planState, wallId)
+    }
+  }
+
+  const roomNow = getRoom(planState, roomId)
+  if (!roomNow) return planState
+
+  for (const vid of roomVertexIds(planState, roomNow)) {
+    if (getRoomsAtVertex(planState, vid).includes(otherRoomId)) {
+      planState = disconnectVertexForRoom(planState, vid, otherRoomId)
+    }
+  }
+
+  return planState
+}
+
 export function getConnectableWallsForRoom(
   plan: FloorPlan,
   roomId: string,

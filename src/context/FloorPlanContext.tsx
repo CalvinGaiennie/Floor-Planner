@@ -29,6 +29,7 @@ import {
   disconnectRoomsAtWall,
   connectRoomsAtWall,
   connectVertexCorner,
+  disconnectRooms,
   disconnectWallFromVertex,
   disconnectVertexForRoom,
   findRoomByVertexId,
@@ -150,6 +151,7 @@ type Action =
   | { type: 'DISCONNECT_SHARED_WALL'; wallId: string }
   | { type: 'CONNECT_SHARED_WALL'; wallId: string }
   | { type: 'CONNECT_VERTEX'; vertexId: string }
+  | { type: 'DISCONNECT_ROOMS'; roomId: string; otherRoomId: string }
   | { type: 'DISCONNECT_WALL_FROM_VERTEX'; wallId: string; vertexId: string }
   | { type: 'DISCONNECT_VERTEX_ROOM'; vertexId: string; roomId: string }
   | { type: 'MOVE_ROOM'; roomId: string; point: { x: number; y: number } }
@@ -177,6 +179,7 @@ const PLAN_UNDO_ACTIONS = new Set<Action['type']>([
   'DISCONNECT_SHARED_WALL',
   'CONNECT_SHARED_WALL',
   'CONNECT_VERTEX',
+  'DISCONNECT_ROOMS',
   'DISCONNECT_WALL_FROM_VERTEX',
   'DISCONNECT_VERTEX_ROOM',
   'MOVE_ROOM',
@@ -314,6 +317,11 @@ function reducer(state: EditorState, action: Action): EditorState {
     }
     case 'CONNECT_VERTEX': {
       const plan = connectVertexCorner(state.plan, action.vertexId)
+      if (plan === state.plan) return state
+      return { ...state, plan }
+    }
+    case 'DISCONNECT_ROOMS': {
+      const plan = disconnectRooms(state.plan, action.roomId, action.otherRoomId)
       if (plan === state.plan) return state
       return { ...state, plan }
     }
@@ -466,6 +474,7 @@ interface FloorPlanContextValue {
   disconnectSharedWall: (wallId: string) => void
   connectSharedWall: (wallId: string) => void
   connectCorner: (vertexId: string) => void
+  disconnectFromRoom: (roomId: string, otherRoomId: string) => void
   disconnectWallFromCorner: (wallId: string, vertexId: string) => void
   disconnectCornerFromRoom: (vertexId: string, roomId: string) => void
   moveRoom: (roomId: string, point: { x: number; y: number }) => void
@@ -1096,6 +1105,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       connectSharedWall: (wallId) =>
         dispatchAction({ type: 'CONNECT_SHARED_WALL', wallId }),
       connectCorner: (vertexId) => dispatchAction({ type: 'CONNECT_VERTEX', vertexId }),
+      disconnectFromRoom: (roomId, otherRoomId) =>
+        dispatchAction({ type: 'DISCONNECT_ROOMS', roomId, otherRoomId }),
       disconnectWallFromCorner: (wallId, vertexId) =>
         dispatchAction({ type: 'DISCONNECT_WALL_FROM_VERTEX', wallId, vertexId }),
       disconnectCornerFromRoom: (vertexId, roomId) =>

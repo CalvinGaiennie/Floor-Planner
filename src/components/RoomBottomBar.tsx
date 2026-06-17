@@ -6,10 +6,10 @@ import {
   canConnectRoomsAtWall,
   canConnectVertex,
   getConnectableWallsForRoom,
+  getLinkedRoomIds,
   getRoom,
   getRoomsAtVertex,
   getSharedWallRoomIds,
-  getSharedWallsForRoom,
   getWall,
   isPlanWallId,
   isRoomsConnectedAtWall,
@@ -63,6 +63,7 @@ export function RoomBottomBar() {
     disconnectSharedWall,
     connectSharedWall,
     connectCorner,
+    disconnectFromRoom,
     disconnectWallFromCorner,
     disconnectCornerFromRoom,
   } = useFloorPlan()
@@ -305,7 +306,7 @@ export function RoomBottomBar() {
   }
 
   const { width, depth } = roomBoundingSize(state.plan, selectedRoom)
-  const sharedWalls = getSharedWallsForRoom(state.plan, selectedRoom.id)
+  const linkedRoomIds = getLinkedRoomIds(state.plan, selectedRoom.id)
   const connectableWalls = getConnectableWallsForRoom(state.plan, selectedRoom.id)
 
   const setNumber = (field: 'wallHeight', raw: string) => {
@@ -362,18 +363,16 @@ export function RoomBottomBar() {
             </button>
           )
         })}
-        {sharedWalls.map(({ wallId, otherRoomIds }) => {
-          const otherNames = otherRoomIds
-            .map((id) => getRoom(state.plan, id)?.name ?? 'Room')
-            .join(', ')
+        {linkedRoomIds.map((otherId) => {
+          const otherName = getRoom(state.plan, otherId)?.name ?? 'Room'
           return (
             <button
-              key={wallId}
+              key={otherId}
               type="button"
-              onClick={() => disconnectSharedWall(wallId)}
-              title={`Separate from ${otherNames} — walls stay, drag to move apart`}
+              onClick={() => disconnectFromRoom(selectedRoom.id, otherId)}
+              title={`Separate from ${otherName} at any shared wall or corner`}
             >
-              Disconnect from {otherNames}
+              Disconnect from {otherName}
             </button>
           )
         })}

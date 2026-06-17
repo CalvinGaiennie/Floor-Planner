@@ -379,8 +379,10 @@ export function FloorPlanEditor() {
       const door = findDoorAtPoint(plan, planWalls, point)
       if (door) return door.id
 
+      const vertexHitFt = Math.max(VERTEX_SNAP_DISTANCE, 12 / (PIXELS_PER_FOOT * scale))
+
       for (const v of plan.vertices) {
-        if (Math.hypot(v.x - point.x, v.y - point.y) < VERTEX_SNAP_DISTANCE) return v.id
+        if (Math.hypot(v.x - point.x, v.y - point.y) < vertexHitFt) return v.id
       }
 
       const wallId = findWallAtPoint(planWalls, point, containingRoomIds)
@@ -389,7 +391,7 @@ export function FloorPlanEditor() {
       if (selectedRoom) {
         for (const vid of roomVertexIds(plan, selectedRoom)) {
           const v = getVertex(plan, vid)
-          if (v && Math.hypot(v.x - point.x, v.y - point.y) < VERTEX_SNAP_DISTANCE) return vid
+          if (v && Math.hypot(v.x - point.x, v.y - point.y) < vertexHitFt) return vid
         }
       }
 
@@ -401,7 +403,7 @@ export function FloorPlanEditor() {
       }
       return null
     },
-    [plan, planWalls, selectedRoom],
+    [plan, planWalls, selectedRoom, scale],
   )
 
   const draw = useCallback(() => {
