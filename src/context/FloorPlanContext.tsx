@@ -26,6 +26,8 @@ import {
   dragWallPerpendicular,
   duplicateRoom,
   reorderRoom,
+  splitRoom,
+  splitWallAtMidpoint,
   findRoomByVertexId,
   findRoomByWallId,
   getRoom,
@@ -142,6 +144,8 @@ type Action =
   | { type: 'DUPLICATE_ROOM'; id: string }
   | { type: 'DUPLICATE_FURNITURE'; id: string }
   | { type: 'REORDER_ROOM'; activeId: string; overId: string }
+  | { type: 'SPLIT_ROOM'; roomId: string }
+  | { type: 'SPLIT_WALL'; wallId: string }
   | { type: 'MOVE_ROOM'; roomId: string; point: { x: number; y: number } }
   | { type: 'RESIZE_WALL'; wallId: string; point: { x: number; y: number }; anchor: WallDragAnchor }
   | { type: 'MOVE_VERTEX'; vertexId: string; point: { x: number; y: number } }
@@ -164,6 +168,8 @@ const PLAN_UNDO_ACTIONS = new Set<Action['type']>([
   'DUPLICATE_ROOM',
   'DUPLICATE_FURNITURE',
   'REORDER_ROOM',
+  'SPLIT_ROOM',
+  'SPLIT_WALL',
   'MOVE_ROOM',
   'RESIZE_WALL',
   'MOVE_VERTEX',
@@ -286,6 +292,23 @@ function reducer(state: EditorState, action: Action): EditorState {
         ...state,
         plan: reorderRoom(state.plan, action.activeId, action.overId),
       }
+    }
+    case 'SPLIT_ROOM': {
+      const beforeCount = state.plan.rooms.length
+      const plan = splitRoom(state.plan, action.roomId)
+      if (plan.rooms.length === beforeCount) return state
+      const newRoom = lastCreatedRoom(plan)
+      return {
+        ...state,
+        plan,
+        selectedId: newRoom?.id ?? action.roomId,
+      }
+    }
+    case 'SPLIT_WALL': {
+      const beforeCount = state.plan.walls.length
+      const plan = splitWallAtMidpoint(state.plan, action.wallId)
+      if (plan.walls.length === beforeCount) return state
+      return { ...state, plan }
     }
     case 'MOVE_ROOM': {
       const room = state.plan.rooms.find((r) => r.id === action.roomId)
@@ -423,6 +446,8 @@ interface FloorPlanContextValue {
   duplicateRoom: (id: string) => void
   duplicateFurniture: (id: string) => void
   reorderRoomInList: (activeId: string, overId: string) => void
+  splitRoomInPlan: (roomId: string) => void
+  splitSelectedWall: (wallId: string) => void
   moveRoom: (roomId: string, point: { x: number; y: number }) => void
   resizeWall: (wallId: string, point: { x: number; y: number }, anchor: WallDragAnchor) => void
   moveVertex: (vertexId: string, point: { x: number; y: number }) => void
@@ -1046,6 +1071,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       duplicateFurniture: (id) => dispatchAction({ type: 'DUPLICATE_FURNITURE', id }),
       reorderRoomInList: (activeId, overId) =>
         dispatchAction({ type: 'REORDER_ROOM', activeId, overId }),
+      splitRoomInPlan: (roomId) => dispatchAction({ type: 'SPLIT_ROOM', roomId }),
+      splitSelectedWall: (wallId) => dispatchAction({ type: 'SPLIT_WALL', wallId }),
       moveRoom: (roomId, point) => dispatchAction({ type: 'MOVE_ROOM', roomId, point }),
       resizeWall: (wallId, point, anchor) =>
         dispatchAction({ type: 'RESIZE_WALL', wallId, point, anchor }),

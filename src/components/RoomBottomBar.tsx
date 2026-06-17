@@ -3,6 +3,8 @@ import { rotationDegrees } from '../utils/geometry'
 import { formatFeetInches } from '../utils/imperial'
 import { doorStyleLabel, doorSwingLabel } from '../utils/doors'
 import {
+  canSplitRoom,
+  canSplitWall,
   getRoom,
   getSharedWallRoomIds,
   getWall,
@@ -53,6 +55,8 @@ export function RoomBottomBar() {
     duplicateRoom,
     duplicateFurniture,
     rotateSelected,
+    splitRoomInPlan,
+    splitSelectedWall,
   } = useFloorPlan()
 
   const selectedWallId =
@@ -66,6 +70,8 @@ export function RoomBottomBar() {
         .map((id) => getRoom(state.plan, id)?.name ?? 'Room')
         .join(' · ')
     : ''
+
+  const canSplitSelectedWall = selectedWallId ? canSplitWall(state.plan, selectedWallId) : false
 
   if (selectedWall) {
     return (
@@ -88,6 +94,15 @@ export function RoomBottomBar() {
         </label>
 
         <div className="room-bottom-bar-actions">
+          {canSplitSelectedWall && (
+            <button
+              type="button"
+              onClick={() => splitSelectedWall(selectedWallId!)}
+              title="Add a corner at the wall midpoint"
+            >
+              Split wall
+            </button>
+          )}
           <button
             type="button"
             className="danger"
@@ -196,6 +211,7 @@ export function RoomBottomBar() {
   }
 
   const { width, depth } = roomBoundingSize(state.plan, selectedRoom)
+  const roomCanSplit = canSplitRoom(state.plan, selectedRoom.id)
 
   const setNumber = (field: 'wallHeight', raw: string) => {
     const value = Number(raw)
@@ -235,6 +251,15 @@ export function RoomBottomBar() {
       <RotateButtons onRotate={rotateSelected} />
 
       <div className="room-bottom-bar-actions">
+        {roomCanSplit && (
+          <button
+            type="button"
+            onClick={() => splitRoomInPlan(selectedRoom.id)}
+            title="Divide this room into two with an interior wall"
+          >
+            Split room
+          </button>
+        )}
         <button type="button" onClick={() => duplicateRoom(selectedRoom.id)}>
           Duplicate
         </button>
