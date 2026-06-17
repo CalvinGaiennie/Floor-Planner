@@ -5,9 +5,10 @@ import * as THREE from 'three'
 import { PointerLockControls as PointerLockControlsImpl } from 'three-stdlib'
 import { requestView3dPointerLock } from '../utils/view3dPointerLock'
 import { useFloorPlan } from '../context/FloorPlanContext'
-import type { Wall } from '../types/floorPlan'
+import type { Door, Wall } from '../types/floorPlan'
 import type { FurnitureCategory, FurnitureItem } from '../types/furniture'
-import { pointOnWall, wallAngle, wallLength } from '../utils/geometry'
+import { pointOnWall, wallAngle } from '../utils/geometry'
+import { wallSolidSegments } from '../utils/doors'
 import { WORKSPACE_SIZE } from '../utils/workspace'
 
 function walkSpawnFromWalls(walls: Wall[]): THREE.Vector3 {
@@ -72,6 +73,7 @@ const FURNITURE_3D_COLORS: Record<FurnitureCategory, string> = {
   fridge: '#94a3b8',
   stove: '#f87171',
   island: '#facc15',
+  shelf: '#c084fc',
 }
 
 function FurnitureMesh({ item, selected }: { item: FurnitureItem; selected: boolean }) {
@@ -90,12 +92,14 @@ function FurnitureMesh({ item, selected }: { item: FurnitureItem; selected: bool
 
 function SceneContent({
   walls,
+  doors,
   furniture,
   workspaceWidth,
   workspaceHeight,
   selectedId,
 }: {
   walls: Wall[]
+  doors: Door[]
   furniture: FurnitureItem[]
   workspaceWidth: number
   workspaceHeight: number
@@ -126,15 +130,18 @@ function SceneContent({
         position={[workspaceWidth / 2, 0.01, workspaceHeight / 2]}
       />
 
-      {walls.map((wall) => (
-        <WallMesh
-          key={wall.id}
-          wall={wall}
-          startOffset={0}
-          endOffset={wallLength(wall)}
-          selected={wall.id === selectedId}
-        />
-      ))}
+      {walls.map((wall) => {
+        const segments = wallSolidSegments(wall, doors)
+        return segments.map((segment, index) => (
+          <WallMesh
+            key={`${wall.id}-${index}`}
+            wall={wall}
+            startOffset={segment.start}
+            endOffset={segment.end}
+            selected={wall.id === selectedId}
+          />
+        ))
+      })}
 
       {furniture.map((item) => (
         <FurnitureMesh key={item.id} item={item} selected={item.id === selectedId} />
@@ -257,6 +264,7 @@ function WalkControls({ walls, active }: { walls: Wall[]; active: boolean }) {
 
 function Scene({
   walls,
+  doors,
   furniture,
   workspaceWidth,
   workspaceHeight,
@@ -264,6 +272,7 @@ function Scene({
   active,
 }: {
   walls: Wall[]
+  doors: Door[]
   furniture: FurnitureItem[]
   workspaceWidth: number
   workspaceHeight: number
@@ -275,6 +284,7 @@ function Scene({
       <WalkControls walls={walls} active={active} />
       <SceneContent
         walls={walls}
+        doors={doors}
         furniture={furniture}
         workspaceWidth={workspaceWidth}
         workspaceHeight={workspaceHeight}
@@ -324,6 +334,7 @@ export function View3D() {
           <Suspense fallback={null}>
             <Scene
               walls={planWalls}
+              doors={state.plan.doors}
               furniture={state.plan.furniture}
               workspaceWidth={WORKSPACE_SIZE.width}
               workspaceHeight={WORKSPACE_SIZE.height}

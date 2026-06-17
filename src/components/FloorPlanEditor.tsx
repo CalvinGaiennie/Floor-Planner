@@ -11,8 +11,7 @@ import {
   PIXELS_PER_FOOT,
   WORKSPACE_SIZE,
 } from '../utils/workspace'
-import { projectOntoWall, wallLength } from '../utils/geometry'
-import { formatFeetInches, snapToGrid } from '../utils/imperial'
+import { projectOntoWall, pointOnWall, wallLength } from '../utils/geometry'
 import {
   createWallDragAnchor,
   findVertexNear,
@@ -33,6 +32,14 @@ import {
   furnitureCorners,
   isFurnitureId,
 } from '../utils/furniture'
+import {
+  doorSwingGeometry,
+  findDoorAtPoint,
+  findNearestWall,
+  isDoorId,
+  wallSolidSegments,
+} from '../utils/doors'
+import { formatFeetInches, snapToGrid } from '../utils/imperial'
 import type { FurnitureCategory } from '../types/furniture'
 
 const FURNITURE_COLORS: Record<FurnitureCategory, { fill: string; stroke: string; label: string }> = {
@@ -48,6 +55,7 @@ const FURNITURE_COLORS: Record<FurnitureCategory, { fill: string; stroke: string
   fridge: { fill: 'rgba(148, 163, 184, 0.38)', stroke: '#94a3b8', label: '#475569' },
   stove: { fill: 'rgba(239, 68, 68, 0.38)', stroke: '#ef4444', label: '#b91c1c' },
   island: { fill: 'rgba(234, 179, 8, 0.38)', stroke: '#eab308', label: '#a16207' },
+  shelf: { fill: 'rgba(168, 85, 247, 0.38)', stroke: '#a855f7', label: '#7e22ce' },
 }
 
 function snapPlanPoint(plan: FloorPlan, point: Point2D): Point2D {
@@ -107,6 +115,8 @@ export function FloorPlanEditor() {
     setPlacementCatalogId,
     placeFurniture,
     moveFurnitureOnPlan,
+    addDoor,
+    moveDoorOnPlan,
     furnitureCatalog,
     rotateSelected,
   } = useFloorPlan()
@@ -331,6 +341,9 @@ export function FloorPlanEditor() {
           if (v && Math.hypot(v.x - point.x, v.y - point.y) < VERTEX_SNAP_DISTANCE) return vid
         }
       }
+
+      const door = findDoorAtPoint(plan, planWalls, point)
+      if (door) return door.id
 
       let bestWallId: string | null = null
       let bestWallDist = 1.25
@@ -565,18 +578,24 @@ export function FloorPlanEditor() {
     }
 
     for (const wall of planWalls) {
-      const start = planToScreen(wall.start, offset, scale)
-      const end = planToScreen(wall.end, offset, scale)
+      const segments = wallSolidSegments(wall, plan.doors)
       const isSelected = wall.id === selectedId
-      ctx.strokeStyle = isSelected ? '#1d4ed8' : '#d1d5db'
-      ctx.lineWidth = isSelected
+      const lineWidth = isSelected
         ? Math.max(3, wall.thickness * PIXELS_PER_FOOT * scale)
         : Math.max(1.5, wall.thickness * PIXELS_PER_FOOT * scale)
+
+      ctx.strokeStyle = isSelected ? '#1d4ed8' : '#d1d5db'
+      ctx.lineWidth = lineWidth
       ctx.lineCap = 'square'
-      ctx.beginPath()
-      ctx.moveTo(start.x, start.y)
-      ctx.lineTo(end.x, end.y)
-      ctx.stroke()
+
+      for (const segment of segments) {
+        const segStart = planToScreen(pointOnWall(wall, segment.start), offset, scale)
+        const segEnd = planToScreen(pointOnWall(wall, segment.end), offset, scale)
+        ctx.beginPath()
+        ctx.moveTo(segStart.x, segStart.y)
+        ctx.lineTo(segEnd.x, segEnd.y)
+        ctx.stroke()
+      }
 
       if (isSelected) {
         const len = wallLength(wall)
@@ -589,6 +608,49 @@ export function FloorPlanEditor() {
         ctx.font = '10px system-ui'
         ctx.textAlign = 'center'
         ctx.fillText(formatFeetInches(len), mid.x, mid.y - 6)
+      }
+    }
+
+    for (const door of plan.doors) {
+      const wall = planWalls.find((w) => w.id === door.wallId)
+      if (!wall) continue
+
+      const isSelected = door.id === selectedId
+      const openStart = planToScreen(pointOnWall(wall, door.offset - door.width / 2), offset, scale)
+      const openEnd = planToScreen(pointOnWall(wall, door.offset + door.width / 2), offset, scale)
+      const { hinge, leafEnd } = doorSwingGeometry(wall, door)
+      const hingeScreen = planToScreen(hinge, offset, scale)
+      const leafScreen = planToScreen(leafEnd, offset, scale)
+
+      ctx.strokeStyle = isSelected ? '#1d4ed8' : '#64748b'
+      ctx.lineWidth = isSelected ? 2.5 : 1.5
+      ctx.beginPath()
+      ctx.moveTo(hingeScreen.x, hingeScreen.y)
+      ctx.lineTo(leafScreen.x, leafScreen.y)
+      ctx.stroke()
+
+      const arcRadius = Math.hypot(leafScreen.x - hingeScreen.x, leafScreen.y - hingeScreen.y)
+      if (arcRadius > 2) {
+        const wallAngleScreen = Math.atan2(openEnd.y - hingeScreen.y, openEnd.x - hingeScreen.x)
+        const leafAngle = Math.atan2(leafScreen.y - hingeScreen.y, leafScreen.x - hingeScreen.x)
+        ctx.beginPath()
+        ctx.arc(hingeScreen.x, hingeScreen.y, arcRadius, leafAngle, wallAngleScreen, true)
+        ctx.stroke()
+      }
+
+      ctx.strokeStyle = isSelected ? '#2563eb' : '#94a3b8'
+      ctx.lineWidth = isSelected ? 2 : 1
+      ctx.beginPath()
+      ctx.moveTo(openStart.x, openStart.y)
+      ctx.lineTo(openEnd.x, openEnd.y)
+      ctx.stroke()
+
+      if (isSelected) {
+        const center = planToScreen(pointOnWall(wall, door.offset), offset, scale)
+        ctx.fillStyle = '#64748b'
+        ctx.font = '10px system-ui'
+        ctx.textAlign = 'center'
+        ctx.fillText(formatFeetInches(door.width), center.x, center.y - 8)
       }
     }
 
@@ -647,6 +709,31 @@ export function FloorPlanEditor() {
       ctx.setLineDash([6, 4])
       ctx.strokeRect(center.x - hw, center.y - hd, hw * 2, hd * 2)
       ctx.setLineDash([])
+    }
+
+    if (tool === 'door' && cursorPlan) {
+      const nearest = findNearestWall(planWalls, cursorPlan)
+      if (nearest) {
+        const previewWidth = 3
+        const openStart = planToScreen(
+          pointOnWall(nearest.wall, nearest.offset - previewWidth / 2),
+          offset,
+          scale,
+        )
+        const openEnd = planToScreen(
+          pointOnWall(nearest.wall, nearest.offset + previewWidth / 2),
+          offset,
+          scale,
+        )
+        ctx.strokeStyle = '#2563eb'
+        ctx.lineWidth = 2
+        ctx.setLineDash([6, 4])
+        ctx.beginPath()
+        ctx.moveTo(openStart.x, openStart.y)
+        ctx.lineTo(openEnd.x, openEnd.y)
+        ctx.stroke()
+        ctx.setLineDash([])
+      }
     }
   }, [plan, planWalls, offset, scale, selectedId, selectedRoom, cursorPlan, tool, wallPlaceStart, placementEntry])
 
@@ -795,6 +882,11 @@ export function FloorPlanEditor() {
         moveDragIdRef.current = id
         setMoveDragId(id)
         moveDragStartRef.current = point
+      } else if (id && isDoorId(plan, id)) {
+        recordUndoSnapshot()
+        moveDragIdRef.current = id
+        setMoveDragId(id)
+        moveDragStartRef.current = point
       } else if (id && plan.rooms.some((r) => r.id === id)) {
         recordUndoSnapshot()
         moveDragIdRef.current = id
@@ -811,6 +903,11 @@ export function FloorPlanEditor() {
         return
       }
       addWall(wallPlaceStart, snapped)
+      return
+    }
+
+    if (tool === 'door') {
+      addDoor(point)
       return
     }
 
@@ -869,6 +966,8 @@ export function FloorPlanEditor() {
       if (moveActive) {
         if (isFurnitureId(plan, moveDragId)) {
           moveFurnitureOnPlan(moveDragId, point)
+        } else if (isDoorId(plan, moveDragId)) {
+          moveDoorOnPlan(moveDragId, point)
         } else {
           moveRoom(moveDragId, point)
         }

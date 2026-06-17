@@ -1,4 +1,5 @@
 import { v4 as uuid } from 'uuid'
+import { pruneDoors } from './doors'
 import {
   DEFAULT_ROOM_DEPTH,
   DEFAULT_ROOM_WIDTH,
@@ -301,7 +302,7 @@ export function mergeCoincidentVertices(plan: FloorPlan): FloorPlan {
 }
 
 export function sanitizePlan(plan: FloorPlan): FloorPlan {
-  return mergeCoincidentVertices(pruneStaleWallIds(plan))
+  return mergeCoincidentVertices(pruneStaleWallIds(pruneDoors(plan)))
 }
 
 export function isPointInsideRoom(plan: FloorPlan, point: Point2D, room: Room): boolean {

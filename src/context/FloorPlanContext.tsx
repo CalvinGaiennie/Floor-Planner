@@ -13,6 +13,7 @@ import {
   createEmptyPlan,
   type FloorPlan,
   type Room,
+  type Door,
   type Tool,
   type ViewMode,
 } from '../types/floorPlan'
@@ -62,6 +63,12 @@ import {
   moveFurniture,
   rotateFurniture,
 } from '../utils/furniture'
+import {
+  addDoorAtPoint,
+  deleteDoor,
+  isDoorId,
+  moveDoor,
+} from '../utils/doors'
 import {
   loadFurnitureCatalog,
   saveFurnitureCatalog,
@@ -130,6 +137,8 @@ type Action =
   | { type: 'ADD_WALL'; start: { x: number; y: number }; end: { x: number; y: number } }
   | { type: 'ADD_FURNITURE'; entry: FurnitureCatalogEntry; point: { x: number; y: number } }
   | { type: 'MOVE_FURNITURE'; id: string; point: { x: number; y: number } }
+  | { type: 'ADD_DOOR'; point: { x: number; y: number } }
+  | { type: 'MOVE_DOOR'; id: string; point: { x: number; y: number } }
   | { type: 'ROTATE_ROOM'; roomId: string; deltaRadians: number }
   | { type: 'ROTATE_FURNITURE'; id: string; deltaRadians: number }
   | { type: 'SET_PLACEMENT_CATALOG_ID'; catalogId: string | null }
@@ -147,6 +156,8 @@ const PLAN_UNDO_ACTIONS = new Set<Action['type']>([
   'ADD_WALL',
   'ADD_FURNITURE',
   'MOVE_FURNITURE',
+  'ADD_DOOR',
+  'MOVE_DOOR',
   'ROTATE_ROOM',
   'ROTATE_FURNITURE',
 ])
@@ -156,6 +167,7 @@ const CONTINUOUS_UNDO_ACTIONS = new Set<Action['type']>([
   'RESIZE_WALL',
   'MOVE_VERTEX',
   'MOVE_FURNITURE',
+  'MOVE_DOOR',
 ])
 
 function snapPoint(point: { x: number; y: number }) {
@@ -214,6 +226,8 @@ function reducer(state: EditorState, action: Action): EditorState {
       let nextState: EditorState
       if (isFurnitureId(state.plan, id)) {
         nextState = { ...state, selectedId: null, plan: deleteFurniture(state.plan, id) }
+      } else if (isDoorId(state.plan, id)) {
+        nextState = { ...state, selectedId: null, plan: deleteDoor(state.plan, id) }
       } else if (isPlanWallId(state.plan, id)) {
         nextState = { ...state, selectedId: null, plan: deleteWall(state.plan, id) }
       } else {
@@ -292,6 +306,25 @@ function reducer(state: EditorState, action: Action): EditorState {
         plan: moveFurniture(state.plan, action.id, snapPoint(action.point)),
       }
     }
+    case 'ADD_DOOR': {
+      const walls = resolveWalls(state.plan)
+      const before = state.plan.doors.length
+      const plan = addDoorAtPoint(state.plan, walls, action.point)
+      if (plan.doors.length === before) return state
+      const door = plan.doors[plan.doors.length - 1]
+      return {
+        ...state,
+        plan,
+        selectedId: door.id,
+        tool: 'select',
+      }
+    }
+    case 'MOVE_DOOR': {
+      return {
+        ...state,
+        plan: moveDoor(state.plan, resolveWalls(state.plan), action.id, action.point),
+      }
+    }
     case 'ROTATE_ROOM': {
       return {
         ...state,
@@ -336,6 +369,8 @@ interface FloorPlanContextValue {
   setPlacementCatalogId: (catalogId: string | null) => void
   placeFurniture: (catalogId: string, point: { x: number; y: number }) => void
   moveFurnitureOnPlan: (id: string, point: { x: number; y: number }) => void
+  addDoor: (point: { x: number; y: number }) => void
+  moveDoorOnPlan: (id: string, point: { x: number; y: number }) => void
   rotateSelected: (direction: 'cw' | 'ccw') => void
   addRoom: (point: { x: number; y: number }) => void
   updateRoom: (id: string, patch: RoomPatch) => void
@@ -353,6 +388,7 @@ interface FloorPlanContextValue {
   undo: () => void
   selectedRoom: Room | null
   selectedFurniture: FurnitureItem | null
+  selectedDoor: Door | null
   planWalls: ReturnType<typeof resolveWalls>
   planReady: boolean
   syncError: string | null
@@ -588,6 +624,11 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     return getFurniture(state.plan, state.selectedId) ?? null
   }, [state.plan, state.selectedId])
 
+  const selectedDoor = useMemo(() => {
+    if (!state.selectedId || !isDoorId(state.plan, state.selectedId)) return null
+    return state.plan.doors.find((d) => d.id === state.selectedId) ?? null
+  }, [state.plan, state.selectedId])
+
   const createNewPlan = useCallback(async () => {
     try {
       await flushCloudSave()
@@ -748,6 +789,20 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     [dispatchAction],
   )
 
+  const addDoor = useCallback(
+    (point: { x: number; y: number }) => {
+      dispatchAction({ type: 'ADD_DOOR', point })
+    },
+    [dispatchAction],
+  )
+
+  const moveDoorOnPlan = useCallback(
+    (id: string, point: { x: number; y: number }) => {
+      dispatchAction({ type: 'MOVE_DOOR', id, point })
+    },
+    [dispatchAction],
+  )
+
   const rotateSelected = useCallback(
     (direction: 'cw' | 'ccw') => {
       const delta = direction === 'cw' ? ROTATE_STEP_RADIANS : -ROTATE_STEP_RADIANS
@@ -789,6 +844,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       setPlacementCatalogId,
       placeFurniture,
       moveFurnitureOnPlan,
+      addDoor,
+      moveDoorOnPlan,
       rotateSelected,
       addRoom: (point) => dispatchAction({ type: 'ADD_ROOM', point }),
       updateRoom: (id, patch) => dispatchAction({ type: 'UPDATE_ROOM', id, patch }),
@@ -808,6 +865,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       undo,
       selectedRoom,
       selectedFurniture,
+      selectedDoor,
       planWalls,
       planReady,
       syncError,
@@ -822,6 +880,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       planWalls,
       selectedRoom,
       selectedFurniture,
+      selectedDoor,
       recordUndoSnapshot,
       undo,
       planReady,
@@ -834,6 +893,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       setPlacementCatalogId,
       placeFurniture,
       moveFurnitureOnPlan,
+      addDoor,
+      moveDoorOnPlan,
       rotateSelected,
       syncError,
     ],

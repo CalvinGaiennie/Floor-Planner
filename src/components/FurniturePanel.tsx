@@ -19,6 +19,7 @@ const CATEGORY_ORDER: FurnitureCategory[] = [
   'fridge',
   'stove',
   'island',
+  'shelf',
 ]
 
 function FurnitureIcon() {

@@ -55,6 +55,14 @@ export const DEFAULT_FURNITURE_CATALOG: FurnitureCatalogEntry[] = [
   { id: 'island-small', label: 'Small island', category: 'island', width: 4, depth: 2.5, height: 3, keywords: ['island', 'kitchen', 'small'] },
   { id: 'island-medium', label: 'Medium island', category: 'island', width: 5, depth: 3, height: 3, keywords: ['island', 'kitchen', 'medium'] },
   { id: 'island-large', label: 'Large island', category: 'island', width: 6, depth: 3.5, height: 3, keywords: ['island', 'kitchen', 'large'] },
+  // Shelves
+  { id: 'shelf-bookcase-2', label: '2′ bookcase', category: 'shelf', width: 2, depth: 1, height: 6, keywords: ['shelf', 'bookcase', 'storage', '2'] },
+  { id: 'shelf-bookcase-3', label: '3′ bookcase', category: 'shelf', width: 3, depth: 1, height: 6, keywords: ['shelf', 'bookcase', 'storage', '3'] },
+  { id: 'shelf-bookcase-4', label: '4′ bookcase', category: 'shelf', width: 4, depth: 1, height: 6, keywords: ['shelf', 'bookcase', 'storage', '4'] },
+  { id: 'shelf-pantry', label: 'Pantry shelving', category: 'shelf', width: 2, depth: 2, height: 7, keywords: ['shelf', 'pantry', 'storage', 'kitchen'] },
+  { id: 'shelf-closet-run', label: '6′ closet shelf run', category: 'shelf', width: 6, depth: 2, height: 2, keywords: ['shelf', 'closet', 'storage', '6'] },
+  { id: 'shelf-floating-3', label: '3′ floating shelf', category: 'shelf', width: 3, depth: 1, height: 0.5, keywords: ['shelf', 'floating', 'wall'] },
+  { id: 'shelf-garage', label: '4′ garage shelving', category: 'shelf', width: 4, depth: 1.5, height: 6, keywords: ['shelf', 'garage', 'storage', 'wire'] },
 ]
 
 function cloneCatalog(entries: FurnitureCatalogEntry[]): FurnitureCatalogEntry[] {
@@ -109,4 +117,5 @@ export const FURNITURE_CATEGORY_LABELS: Record<FurnitureCatalogEntry['category']
   fridge: 'Fridges',
   stove: 'Stoves',
   island: 'Islands',
+  shelf: 'Shelves',
 }

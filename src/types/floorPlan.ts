@@ -1,6 +1,6 @@
 import type { FurnitureItem } from './furniture'
 
-export type Tool = 'select' | 'room' | 'wall' | 'delete'
+export type Tool = 'select' | 'room' | 'wall' | 'door' | 'delete'
 
 export type ViewMode = 'plan2d' | 'view3d'
 
@@ -44,6 +44,16 @@ export interface Wall {
   height: number
 }
 
+/** Door opening centered on a wall segment. */
+export interface Door {
+  id: string
+  wallId: string
+  /** Distance from wall start to door center along the wall. */
+  offset: number
+  width: number
+  height: number
+}
+
 export interface FloorPlan {
   name: string
   notes: string
@@ -51,6 +61,7 @@ export interface FloorPlan {
   walls: PlanWall[]
   rooms: Room[]
   furniture: FurnitureItem[]
+  doors: Door[]
 }
 
 export const DEFAULT_WALL_HEIGHT = 8
@@ -62,6 +73,9 @@ export const DEFAULT_ROOM_DEPTH = 10
 export const MIN_WALL_LENGTH = 4
 export const MAX_WALL_LENGTH = 80
 
+export const DEFAULT_DOOR_WIDTH = 3
+export const DEFAULT_DOOR_HEIGHT = 6.67
+
 export function createEmptyPlan(name = 'My Home'): FloorPlan {
   return {
     name,
@@ -70,5 +84,6 @@ export function createEmptyPlan(name = 'My Home'): FloorPlan {
     walls: [],
     rooms: [],
     furniture: [],
+    doors: [],
   }
 }

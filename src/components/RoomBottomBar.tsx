@@ -1,5 +1,6 @@
 import { useFloorPlan } from '../context/FloorPlanContext'
 import { rotationDegrees } from '../utils/geometry'
+import { formatFeetInches } from '../utils/imperial'
 import { roomBoundingSize } from '../utils/planModel'
 
 function RotateButtons({ onRotate }: { onRotate: (direction: 'cw' | 'ccw') => void }) {
@@ -19,12 +20,40 @@ export function RoomBottomBar() {
   const {
     selectedRoom,
     selectedFurniture,
+    selectedDoor,
     state,
     updateRoom,
     deleteSelected,
     duplicateRoom,
     rotateSelected,
   } = useFloorPlan()
+
+  if (selectedDoor) {
+    return (
+      <footer className="room-bottom-bar">
+        <label className="bar-field-compact bar-field-readonly">
+          <span>Type</span>
+          <input type="text" readOnly value="Door" />
+        </label>
+
+        <label className="bar-field-compact bar-field-readonly">
+          <span>Width</span>
+          <input type="text" readOnly value={formatFeetInches(selectedDoor.width)} />
+        </label>
+
+        <label className="bar-field-compact bar-field-readonly">
+          <span>Height</span>
+          <input type="text" readOnly value={formatFeetInches(selectedDoor.height)} />
+        </label>
+
+        <div className="room-bottom-bar-actions">
+          <button type="button" className="danger" onClick={deleteSelected}>
+            Delete
+          </button>
+        </div>
+      </footer>
+    )
+  }
 
   if (selectedFurniture) {
     return (
@@ -59,7 +88,7 @@ export function RoomBottomBar() {
     return (
       <footer className="room-bottom-bar room-bottom-bar-empty">
         <span className="room-bottom-bar-hint">
-          Select a room, wall, or furniture. Press R to rotate 90°.
+          Select a room, wall, door, or furniture. Press R to rotate 90°.
         </span>
       </footer>
     )
@@ -86,17 +115,12 @@ export function RoomBottomBar() {
       </label>
 
       <label className="bar-field-compact bar-field-readonly">
-        <span>W</span>
-        <input type="text" readOnly value={width.toFixed(1)} title="Bounding width (feet)" />
-      </label>
-
-      <label className="bar-field-compact bar-field-readonly">
-        <span>D</span>
-        <input type="text" readOnly value={depth.toFixed(1)} title="Bounding depth (feet)" />
+        <span>Size</span>
+        <input type="text" readOnly value={`${formatFeetInches(width)} × ${formatFeetInches(depth)}`} />
       </label>
 
       <label className="bar-field-compact">
-        <span>H</span>
+        <span>Height</span>
         <input
           type="number"
           min={7}
@@ -104,7 +128,6 @@ export function RoomBottomBar() {
           step={0.5}
           value={selectedRoom.wallHeight}
           onChange={(e) => setNumber('wallHeight', e.target.value)}
-          title="Wall height in feet"
         />
       </label>
 

@@ -11,6 +11,7 @@ export type FurnitureCategory =
   | 'fridge'
   | 'stove'
   | 'island'
+  | 'shelf'
 
 export interface FurnitureCatalogEntry {
   id: string

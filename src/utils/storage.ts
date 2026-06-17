@@ -10,6 +10,7 @@ import {
 } from '../types/floorPlan'
 import { migrateLegacyRectangleRoom, sanitizePlan } from './planModel'
 import { normalizeFurnitureList } from './furniture'
+import { normalizeDoorsList } from './doors'
 
 type LegacyRectangleRoom = {
   id: string
@@ -31,6 +32,7 @@ type LegacyPlan = {
   vertices?: unknown[]
   walls?: unknown[]
   rooms?: LegacyRectangleRoom[]
+  doors?: unknown[]
   openings?: unknown[]
   furniture?: unknown[]
   staircases?: unknown[]
@@ -44,8 +46,12 @@ export function normalizePlanFromJson(data: unknown): FloorPlan {
   return normalizePlan(data as LegacyPlan)
 }
 
+function withDoors(plan: FloorPlan, raw: LegacyPlan): FloorPlan {
+  return { ...plan, doors: normalizeDoorsList(raw.doors ?? raw.openings) }
+}
+
 function withFurniture(plan: FloorPlan, raw: LegacyPlan): FloorPlan {
-  return { ...plan, furniture: normalizeFurnitureList(raw.furniture) }
+  return withDoors({ ...plan, furniture: normalizeFurnitureList(raw.furniture) }, raw)
 }
 
 function normalizePlan(raw: LegacyPlan): FloorPlan {
@@ -68,6 +74,7 @@ function normalizePlan(raw: LegacyPlan): FloorPlan {
       walls: raw.walls as FloorPlan['walls'],
       rooms: raw.rooms as Room[],
       furniture: base.furniture,
+      doors: base.doors,
     })
   }
 
@@ -84,6 +91,7 @@ function normalizePlan(raw: LegacyPlan): FloorPlan {
         walls: raw.walls as FloorPlan['walls'],
         rooms: wallGraphRooms,
         furniture: base.furniture,
+        doors: base.doors,
       })
     }
   }
