@@ -114,6 +114,7 @@ export function FloorPlanEditor() {
     moveVertex,
     addWall,
     deleteSelected,
+    disconnectSharedWall,
     recordUndoSnapshot,
     finishGeometryEdit,
     selectedRoom,
@@ -1151,7 +1152,7 @@ export function FloorPlanEditor() {
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation()
-              deleteSelected()
+              if (selectedId) disconnectSharedWall(selectedId)
             }}
           >
             Disconnect

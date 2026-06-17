@@ -483,7 +483,47 @@ export function isSharedRoomWall(plan: FloorPlan, wallId: string): boolean {
 }
 
 export function disconnectRoomsAtWall(plan: FloorPlan, wallId: string): FloorPlan {
-  return deleteWall(plan, wallId)
+  const wall = getWall(plan, wallId)
+  if (!wall) return plan
+
+  const roomIds = getSharedWallRoomIds(plan, wallId)
+  if (roomIds.length < 2) return plan
+
+  const anchorRoomId = wall.roomId
+  let planState = plan
+
+  for (const roomId of roomIds) {
+    if (roomId === anchorRoomId) continue
+    planState = disconnectVertexForRoom(planState, wall.startVertexId, roomId)
+    planState = disconnectVertexForRoom(planState, wall.endVertexId, roomId)
+  }
+
+  return planState
+}
+
+export function disconnectWallFromVertex(
+  plan: FloorPlan,
+  wallId: string,
+  vertexId: string,
+): FloorPlan {
+  const wall = getWall(plan, wallId)
+  if (!wall) return plan
+  if (wall.startVertexId !== vertexId && wall.endVertexId !== vertexId) return plan
+
+  const vertex = getVertex(plan, vertexId)
+  if (!vertex) return plan
+
+  const newVertex = createVertex({ x: vertex.x, y: vertex.y })
+
+  return {
+    ...plan,
+    vertices: [...plan.vertices, newVertex],
+    walls: plan.walls.map((w) => {
+      if (w.id !== wallId) return w
+      if (w.startVertexId === vertexId) return { ...w, startVertexId: newVertex.id }
+      return { ...w, endVertexId: newVertex.id }
+    }),
+  }
 }
 
 export function wallsAtVertex(plan: FloorPlan, vertexId: string): PlanWall[] {

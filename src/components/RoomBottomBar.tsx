@@ -58,7 +58,7 @@ export function RoomBottomBar() {
     duplicateFurniture,
     rotateSelected,
     disconnectSharedWall,
-    disconnectWallSegment,
+    disconnectWallFromCorner,
     disconnectCornerFromRoom,
   } = useFloorPlan()
 
@@ -103,7 +103,7 @@ export function RoomBottomBar() {
               type="button"
               className="danger"
               onClick={() => disconnectSharedWall(selectedWallId!)}
-              title={`Remove the shared wall between ${sharedRoomNames.replace(/ · /g, ' and ')}`}
+              title={`Separate rooms along this wall — walls stay, drag a room to move it away`}
             >
               Disconnect rooms
             </button>
@@ -236,8 +236,8 @@ export function RoomBottomBar() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => disconnectWallSegment(wall.id)}
-                  title="Remove this wall segment from the corner"
+                  onClick={() => disconnectWallFromCorner(wall.id, selectedVertexId)}
+                  title="Detach this wall from the corner without deleting it"
                 >
                   Disconnect wall
                 </button>
@@ -327,7 +327,7 @@ export function RoomBottomBar() {
               key={wallId}
               type="button"
               onClick={() => disconnectSharedWall(wallId)}
-              title={`Remove the shared wall between ${selectedRoom.name} and ${otherNames}`}
+              title={`Separate from ${otherNames} — walls stay, drag to move apart`}
             >
               Disconnect from {otherNames}
             </button>
