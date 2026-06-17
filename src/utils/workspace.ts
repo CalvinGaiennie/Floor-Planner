@@ -1,5 +1,4 @@
-import { FURNITURE_CATALOG, GRID_SIZE, type FloorPlan, type Point2D } from '../types/floorPlan'
-import { orientedBoxCorners } from './geometry'
+import { GRID_SIZE, type FloorPlan, type Point2D } from '../types/floorPlan'
 import { roomCorners } from './rooms'
 
 export const PLAN_AREA_MAX_WIDTH = 360
@@ -81,18 +80,11 @@ function boundsFromPoints(points: Point2D[]): PlanBounds | null {
   }
 }
 
-/** Bounding box of all rooms, furniture, and staircases. Returns null when the plan is empty. */
+/** Bounding box of all rooms. Returns null when the plan is empty. */
 export function computePlanContentBounds(plan: FloorPlan): PlanBounds | null {
   const points: Point2D[] = []
   for (const room of plan.rooms) {
     points.push(...roomCorners(room))
-  }
-  for (const item of plan.furniture) {
-    const cat = FURNITURE_CATALOG[item.type]
-    points.push(...orientedBoxCorners(item.position, cat.width, cat.depth, item.rotation))
-  }
-  for (const stair of plan.staircases) {
-    points.push(...orientedBoxCorners(stair.position, stair.width, stair.length, stair.rotation))
   }
   return boundsFromPoints(points)
 }

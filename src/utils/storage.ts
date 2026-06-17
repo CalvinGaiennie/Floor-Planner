@@ -2,7 +2,12 @@ import { createEmptyPlan, DEFAULT_WALL_THICKNESS, type FloorPlan, type Room } fr
 
 const STORAGE_KEY = 'floor-planner-plan-v2'
 
-type LegacyPlan = FloorPlan & { walls?: unknown[] }
+type LegacyPlan = FloorPlan & {
+  walls?: unknown[]
+  openings?: unknown[]
+  furniture?: unknown[]
+  staircases?: unknown[]
+}
 
 function normalizePlan(raw: LegacyPlan): FloorPlan {
   const base = createEmptyPlan(raw.name ?? 'My Home')
@@ -11,9 +16,6 @@ function normalizePlan(raw: LegacyPlan): FloorPlan {
     rooms: Array.isArray(raw.rooms)
       ? raw.rooms.map((room) => ({ ...room, wallThickness: DEFAULT_WALL_THICKNESS }))
       : [],
-    openings: Array.isArray(raw.openings) ? raw.openings : [],
-    furniture: Array.isArray(raw.furniture) ? raw.furniture : [],
-    staircases: Array.isArray(raw.staircases) ? raw.staircases : [],
   }
 }
 

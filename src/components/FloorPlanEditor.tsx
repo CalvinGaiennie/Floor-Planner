@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { RoomListPanel } from './RoomListPanel'
 import { useFloorPlan } from '../context/FloorPlanContext'
-import {
-  FURNITURE_CATALOG,
-  GRID_SIZE,
-  type Point2D,
-} from '../types/floorPlan'
+import { GRID_SIZE, type Point2D } from '../types/floorPlan'
 import {
   computeFitScale,
   computeFitScaleForBounds,
@@ -15,13 +11,7 @@ import {
   PIXELS_PER_FOOT,
   WORKSPACE_SIZE,
 } from '../utils/workspace'
-import {
-  findNearestWall,
-  isPointInsideFurniture,
-  pointOnWall,
-  projectOntoWall,
-  wallLength,
-} from '../utils/geometry'
+import { projectOntoWall, wallLength } from '../utils/geometry'
 import { formatFeetInches } from '../utils/imperial'
 import {
   createWallDragAnchor,
@@ -62,15 +52,13 @@ export function FloorPlanEditor() {
   const [moveDragId, setMoveDragId] = useState<string | null>(null)
   const [wallDragId, setWallDragId] = useState<string | null>(null)
   const [altKeyHeld, setAltKeyHeld] = useState(false)
+  const [spaceKeyHeld, setSpaceKeyHeld] = useState(false)
 
   const {
     state,
     planWalls,
     select,
     addRoom,
-    addOpening,
-    addFurniture,
-    addStaircase,
     moveSelected,
     resizeWall,
     deleteSelected,
@@ -84,6 +72,16 @@ export function FloorPlanEditor() {
   offsetRef.current = offset
   const userAdjustedRef = useRef(false)
   const wallDragAnchorRef = useRef<WallDragAnchor | null>(null)
+  const spaceKeyHeldRef = useRef(false)
+  const moveDragStartRef = useRef<Point2D | null>(null)
+  const MOVE_DRAG_THRESHOLD_PX = 4
+
+  const startPan = useCallback((clientX: number, clientY: number) => {
+    const currentOffset = offsetRef.current
+    if (!currentOffset) return
+    userAdjustedRef.current = true
+    setPanStart({ x: clientX, y: clientY, ox: currentOffset.x, oy: currentOffset.y })
+  }, [])
 
   useEffect(() => {
     const container = containerRef.current
@@ -134,12 +132,24 @@ export function FloorPlanEditor() {
       if (!currentOffset) return
 
       const rect = container.getBoundingClientRect()
+
+      // Two-finger trackpad scroll — pan without changing zoom.
+      if (!e.ctrlKey && e.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
+        userAdjustedRef.current = true
+        setOffset({
+          x: currentOffset.x - e.deltaX,
+          y: currentOffset.y - e.deltaY,
+        })
+        return
+      }
+
       const currentScale = scaleRef.current
       const mouse = { x: e.clientX - rect.left, y: e.clientY - rect.top }
       const planBefore = screenToPlan(mouse, currentOffset, currentScale)
       const fitScale = computeFitScale(rect.width, rect.height)
       setFitScale(fitScale)
-      const zoomFactor = Math.exp(-e.deltaY * 0.0018)
+      const zoomRate = e.ctrlKey ? 0.0032 : 0.0024
+      const zoomFactor = Math.exp(-e.deltaY * zoomRate)
       const nextScale = Math.min(MAX_ZOOM_SCALE, Math.max(fitScale, currentScale * zoomFactor))
 
       // Back at (or below) fit scale: snap to a clean fitted + centered view.
@@ -246,25 +256,6 @@ export function FloorPlanEditor() {
 
   const hitTest = useCallback(
     (point: Point2D): string | null => {
-      for (const item of plan.furniture) {
-        const cat = FURNITURE_CATALOG[item.type]
-        if (isPointInsideFurniture(point, item.position, cat.width, cat.depth, item.rotation)) {
-          return item.id
-        }
-      }
-      for (const stair of plan.staircases) {
-        if (
-          isPointInsideFurniture(point, stair.position, stair.width, stair.length, stair.rotation)
-        ) {
-          return stair.id
-        }
-      }
-      for (const opening of plan.openings) {
-        const wall = planWalls.find((w) => w.id === opening.wallId)
-        if (!wall) continue
-        const center = pointOnWall(wall, opening.offset)
-        if (Math.hypot(center.x - point.x, center.y - point.y) < 1.5) return opening.id
-      }
       for (const wall of planWalls) {
         const { dist } = projectOntoWall(wall, point)
         if (dist < 0.75) return wall.id
@@ -449,68 +440,6 @@ export function FloorPlanEditor() {
       }
     }
 
-    for (const opening of plan.openings) {
-      const wall = planWalls.find((w) => w.id === opening.wallId)
-      if (!wall) continue
-      const center = pointOnWall(wall, opening.offset)
-      const screen = planToScreen(center, offset, scale)
-      const w = opening.width * PIXELS_PER_FOOT * scale
-      ctx.fillStyle = opening.type === 'door' ? '#fbbf24' : '#38bdf8'
-      ctx.strokeStyle = opening.id === selectedId ? '#2563eb' : '#0f172a'
-      ctx.lineWidth = opening.id === selectedId ? 3 : 1
-      ctx.fillRect(screen.x - w / 2, screen.y - 6, w, 12)
-      ctx.strokeRect(screen.x - w / 2, screen.y - 6, w, 12)
-      ctx.fillStyle = '#0f172a'
-      ctx.font = '10px system-ui'
-      ctx.textAlign = 'center'
-      ctx.fillText(opening.type, screen.x, screen.y + 20)
-    }
-
-    for (const item of plan.furniture) {
-      const cat = FURNITURE_CATALOG[item.type]
-      const w = cat.width * PIXELS_PER_FOOT * scale
-      const d = cat.depth * PIXELS_PER_FOOT * scale
-      const center = planToScreen(item.position, offset, scale)
-      ctx.save()
-      ctx.translate(center.x, center.y)
-      ctx.rotate(item.rotation)
-      ctx.fillStyle = cat.color
-      ctx.strokeStyle = item.id === selectedId ? '#2563eb' : '#334155'
-      ctx.lineWidth = item.id === selectedId ? 3 : 1
-      ctx.fillRect(-w / 2, -d / 2, w, d)
-      ctx.strokeRect(-w / 2, -d / 2, w, d)
-      ctx.fillStyle = '#fff'
-      ctx.font = '10px system-ui'
-      ctx.textAlign = 'center'
-      ctx.fillText(cat.label, 0, 4)
-      ctx.restore()
-    }
-
-    for (const stair of plan.staircases) {
-      const w = stair.width * PIXELS_PER_FOOT * scale
-      const d = stair.length * PIXELS_PER_FOOT * scale
-      const center = planToScreen(stair.position, offset, scale)
-      ctx.save()
-      ctx.translate(center.x, center.y)
-      ctx.rotate(stair.rotation)
-      ctx.fillStyle = '#cbd5e1'
-      ctx.strokeStyle = stair.id === selectedId ? '#2563eb' : '#475569'
-      ctx.lineWidth = stair.id === selectedId ? 3 : 1
-      ctx.fillRect(-w / 2, -d / 2, w, d)
-      ctx.strokeRect(-w / 2, -d / 2, w, d)
-      for (let i = -d / 2 + 8; i < d / 2; i += 12) {
-        ctx.beginPath()
-        ctx.moveTo(-w / 2, i)
-        ctx.lineTo(w / 2, i)
-        ctx.stroke()
-      }
-      ctx.fillStyle = '#334155'
-      ctx.font = '10px system-ui'
-      ctx.textAlign = 'center'
-      ctx.fillText('Stairs', 0, 4)
-      ctx.restore()
-    }
-
     if (cursorPlan && tool === 'room') {
       const preview = planToScreen(cursorPlan, offset, scale)
       ctx.strokeStyle = '#2563eb'
@@ -532,14 +461,69 @@ export function FloorPlanEditor() {
   }, [draw])
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+    const isEditableTarget = (target: EventTarget | null) =>
+      target instanceof Element &&
+      target.closest('input, textarea, select, [contenteditable="true"]') !== null
+
+    const arrowPan: Record<string, { dx: number; dy: number }> = {
+      ArrowUp: { dx: 0, dy: 1 },
+      ArrowDown: { dx: 0, dy: -1 },
+      ArrowLeft: { dx: 1, dy: 0 },
+      ArrowRight: { dx: -1, dy: 0 },
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !isEditableTarget(e.target)) {
+        e.preventDefault()
+        spaceKeyHeldRef.current = true
+        setSpaceKeyHeld(true)
+        return
+      }
+
+      const pan = arrowPan[e.key]
+      if (pan && !isEditableTarget(e.target)) {
+        const currentOffset = offsetRef.current
+        if (!currentOffset) return
+        e.preventDefault()
+        userAdjustedRef.current = true
+        const step = e.shiftKey ? 96 : 32
+        setOffset({
+          x: currentOffset.x + pan.dx * step,
+          y: currentOffset.y + pan.dy * step,
+        })
+        return
+      }
+
+      if (
+        (e.key === 'Delete' || e.key === 'Backspace') &&
+        selectedId &&
+        !isEditableTarget(e.target)
+      ) {
         e.preventDefault()
         deleteSelected()
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        spaceKeyHeldRef.current = false
+        setSpaceKeyHeld(false)
+      }
+    }
+
+    const onBlur = () => {
+      spaceKeyHeldRef.current = false
+      setSpaceKeyHeld(false)
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onBlur)
+    }
   }, [deleteSelected, selectedId])
 
   const getPlanPoint = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -548,16 +532,15 @@ export function FloorPlanEditor() {
     return screenToPlan({ x: e.clientX - rect.left, y: e.clientY - rect.top }, offset, scale)
   }
 
-  const isMovable = (id: string) =>
-    plan.rooms.some((r) => r.id === id) ||
-    plan.furniture.some((f) => f.id === id) ||
-    plan.staircases.some((s) => s.id === id)
+  const isMovable = (id: string) => plan.rooms.some((r) => r.id === id)
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!offset) return
-    if (e.button === 1 || (e.button === 0 && e.altKey)) {
-      userAdjustedRef.current = true
-      setPanStart({ x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y })
+    if (
+      e.button === 1 ||
+      (e.button === 0 && (e.altKey || spaceKeyHeldRef.current))
+    ) {
+      startPan(e.clientX, e.clientY)
       return
     }
     if (e.button !== 0) return
@@ -577,33 +560,13 @@ export function FloorPlanEditor() {
         setDragging(true)
       } else if (id && isMovable(id)) {
         setMoveDragId(id)
-        setDragging(true)
+        moveDragStartRef.current = point
       }
       return
     }
 
     if (tool === 'room') {
       addRoom(point)
-      return
-    }
-
-    if (tool === 'door') {
-      addOpening(point, 'door')
-      return
-    }
-
-    if (tool === 'window') {
-      addOpening(point, 'window')
-      return
-    }
-
-    if (tool === 'furniture') {
-      addFurniture(point)
-      return
-    }
-
-    if (tool === 'staircase') {
-      addStaircase(point)
     }
   }
 
@@ -626,8 +589,19 @@ export function FloorPlanEditor() {
       return
     }
 
-    if (dragging && moveDragId) {
-      moveSelected(point)
+    if (moveDragId && moveDragStartRef.current && offset) {
+      const rect = canvasRef.current!.getBoundingClientRect()
+      const startScreen = planToScreen(moveDragStartRef.current, offset, scale)
+      const dx = e.clientX - rect.left - startScreen.x
+      const dy = e.clientY - rect.top - startScreen.y
+      let moveActive = dragging
+      if (!moveActive && Math.hypot(dx, dy) >= MOVE_DRAG_THRESHOLD_PX) {
+        setDragging(true)
+        moveActive = true
+      }
+      if (moveActive) {
+        moveSelected(point)
+      }
     }
   }
 
@@ -637,6 +611,7 @@ export function FloorPlanEditor() {
     setMoveDragId(null)
     setWallDragId(null)
     wallDragAnchorRef.current = null
+    moveDragStartRef.current = null
   }
 
   const getCanvasCursor = (): string => {
@@ -648,19 +623,11 @@ export function FloorPlanEditor() {
     }
     if (dragging && moveDragId) return 'grabbing'
 
-    if (tool === 'room' || tool === 'furniture' || tool === 'staircase') return 'crosshair'
-
-    if (tool === 'door' || tool === 'window') {
-      if (cursorPlan) {
-        const nearest = findNearestWall(planWalls, cursorPlan)
-        if (nearest && nearest.dist <= 2) return 'pointer'
-      }
-      return 'crosshair'
-    }
+    if (tool === 'room') return 'crosshair'
 
     if (tool !== 'select') return 'default'
 
-    if (altKeyHeld) return 'grab'
+    if (altKeyHeld || spaceKeyHeld) return 'grab'
 
     if (cursorPlan) {
       const hoverId = hitTest(cursorPlan)
@@ -677,16 +644,11 @@ export function FloorPlanEditor() {
     return 'default'
   }
 
-  const nearestWallHint =
-    cursorPlan && (tool === 'door' || tool === 'window')
-      ? findNearestWall(planWalls, cursorPlan)
-      : null
-
   return (
     <div className="panel plan-panel">
       <div className="panel-header">
         <h2>2D Floor Plan</h2>
-        <span className="panel-meta">360' × 180' · Alt+drag to pan</span>
+        <span className="panel-meta">360' × 180' · Space/Alt+drag · scroll/arrow keys to pan · pinch to zoom</span>
       </div>
       <div className="panel-zoom-bar">
         <span className="zoom-label">Zoom</span>
@@ -743,15 +705,7 @@ export function FloorPlanEditor() {
               Cursor: {formatFeetInches(cursorPlan.x)}, {formatFeetInches(cursorPlan.y)}
             </span>
           )}
-          {nearestWallHint && (tool === 'door' || tool === 'window') && (
-            <span className={nearestWallHint.dist <= 2 ? 'ok' : 'warn'}>
-              {nearestWallHint.dist <= 2 ? 'Snap to wall' : 'Move closer to a wall'}
-            </span>
-          )}
-          <span>
-            {plan.rooms.length} rooms · {plan.openings.length} openings · {plan.furniture.length}{' '}
-            items
-          </span>
+          <span>{plan.rooms.length} rooms</span>
         </div>
       </div>
     </div>

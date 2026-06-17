@@ -1,4 +1,4 @@
-import type { Opening, Point2D, Wall } from '../types/floorPlan'
+import type { Point2D, Wall } from '../types/floorPlan'
 
 export function distance(a: Point2D, b: Point2D): number {
   const dx = b.x - a.x
@@ -61,88 +61,6 @@ export function projectOntoWall(wall: Wall, point: Point2D): { offset: number; d
   return { offset: t * len, dist: distance(point, proj) }
 }
 
-export function findNearestWall(
-  walls: Wall[],
-  point: Point2D,
-  maxDist = 2,
-): { wall: Wall; offset: number; dist: number } | null {
-  let best: { wall: Wall; offset: number; dist: number } | null = null
-
-  for (const wall of walls) {
-    const { offset, dist } = projectOntoWall(wall, point)
-    if (dist <= maxDist && (!best || dist < best.dist)) {
-      best = { wall, offset, dist }
-    }
-  }
-
-  return best
-}
-
-export interface WallSegment {
-  wall: Wall
-  startOffset: number
-  endOffset: number
-}
-
-/** Split a wall into solid segments, omitting openings */
-export function splitWallSegments(wall: Wall, openings: Opening[]): WallSegment[] {
-  const len = wallLength(wall)
-  if (len === 0) return []
-
-  const wallOpenings = openings
-    .filter((o) => o.wallId === wall.id)
-    .map((o) => ({
-      start: Math.max(0, o.offset - o.width / 2),
-      end: Math.min(len, o.offset + o.width / 2),
-    }))
-    .sort((a, b) => a.start - b.start)
-
-  const segments: WallSegment[] = []
-  let cursor = 0
-
-  for (const opening of wallOpenings) {
-    if (opening.start > cursor + 0.05) {
-      segments.push({ wall, startOffset: cursor, endOffset: opening.start })
-    }
-    cursor = Math.max(cursor, opening.end)
-  }
-
-  if (cursor < len - 0.05) {
-    segments.push({ wall, startOffset: cursor, endOffset: len })
-  }
-
-  return segments
-}
-
-export function segmentEndpoints(segment: WallSegment): { start: Point2D; end: Point2D } {
-  return {
-    start: pointOnWall(segment.wall, segment.startOffset),
-    end: pointOnWall(segment.wall, segment.endOffset),
-  }
-}
-
-export function orientedBoxCorners(
-  center: Point2D,
-  width: number,
-  depth: number,
-  rotation: number,
-): Point2D[] {
-  const hw = width / 2
-  const hd = depth / 2
-  const cos = Math.cos(rotation)
-  const sin = Math.sin(rotation)
-  const local = [
-    { x: -hw, y: -hd },
-    { x: hw, y: -hd },
-    { x: hw, y: hd },
-    { x: -hw, y: hd },
-  ]
-  return local.map((p) => ({
-    x: center.x + p.x * cos - p.y * sin,
-    y: center.y + p.x * sin + p.y * cos,
-  }))
-}
-
 export function isPointInsideFurniture(
   point: Point2D,
   center: Point2D,
@@ -167,7 +85,7 @@ export function canWalkTo(
   radius = 1,
 ): boolean {
   const steps = 8
-  for (let i = 0; i <= steps; i++) {
+  for (let i = 1; i <= steps; i++) {
     const t = i / steps
     const point = {
       x: from.x + (to.x - from.x) * t,

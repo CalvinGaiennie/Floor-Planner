@@ -1,17 +1,12 @@
 import { useRef } from 'react'
 import { useFloorPlan } from '../context/FloorPlanContext'
 import { exportPlanJson, importPlanJson } from '../utils/storage'
-import type { FurnitureType, Tool, ViewMode } from '../types/floorPlan'
-import { FURNITURE_CATALOG } from '../types/floorPlan'
+import type { Tool, ViewMode } from '../types/floorPlan'
 import { workspaceCenter, WORKSPACE_SIZE } from '../utils/workspace'
 
 const TOOLS: { id: Tool; label: string; hint: string }[] = [
   { id: 'select', label: 'Select', hint: 'Click a room or wall · drag walls to resize · drag rooms to move' },
   { id: 'room', label: 'Insert Room', hint: 'Click on the plan to place a room' },
-  { id: 'door', label: 'Door', hint: 'Click near a wall' },
-  { id: 'window', label: 'Window', hint: 'Click near a wall' },
-  { id: 'furniture', label: 'Furniture', hint: 'Pick item, click floor' },
-  { id: 'staircase', label: 'Stairs', hint: 'Click to place (future floors)' },
   { id: 'delete', label: 'Delete', hint: 'Select item, press Delete' },
 ]
 
@@ -26,24 +21,13 @@ export function Toolbar() {
     state,
     setTool,
     setViewMode,
-    setFurnitureType,
     setWalkMode,
     addRoom,
-    deleteSelected,
-    rotateSelected,
     newPlan,
     setPlan,
-    selectedRoom,
-    planWalls,
   } = useFloorPlan()
 
   const activeTool = TOOLS.find((t) => t.id === state.tool)
-  const selectedWall = planWalls.some((w) => w.id === state.selectedId)
-  const canRotate =
-    state.selectedId &&
-    !selectedRoom &&
-    (state.plan.furniture.some((f) => f.id === state.selectedId) ||
-      state.plan.staircases.some((s) => s.id === state.selectedId))
 
   return (
     <header className="toolbar">
@@ -78,22 +62,6 @@ export function Toolbar() {
         </button>
       </div>
 
-      {state.tool === 'furniture' && (
-        <div className="toolbar-group">
-          <span className="toolbar-label">Furniture</span>
-          <select
-            value={state.furnitureType}
-            onChange={(e) => setFurnitureType(e.target.value as FurnitureType)}
-          >
-            {(Object.keys(FURNITURE_CATALOG) as FurnitureType[]).map((type) => (
-              <option key={type} value={type}>
-                {FURNITURE_CATALOG[type].label}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-
       <div className="toolbar-group">
         <span className="toolbar-label">View</span>
         <div className="toolbar-buttons">
@@ -118,16 +86,6 @@ export function Toolbar() {
             onClick={() => setWalkMode(!state.walkMode)}
           >
             {state.walkMode ? 'Exit Walk' : 'Walk Through'}
-          </button>
-        )}
-        {canRotate && (
-          <button type="button" onClick={rotateSelected}>
-            Rotate 90°
-          </button>
-        )}
-        {state.selectedId && !selectedRoom && !selectedWall && (
-          <button type="button" className="danger" onClick={deleteSelected}>
-            Delete
           </button>
         )}
         <button type="button" onClick={() => exportPlanJson(state.plan)}>

@@ -1,16 +1,32 @@
-import { Canvas, useThree } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls, PointerLockControls, Sky } from '@react-three/drei'
 import { Suspense, useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import { useFloorPlan } from '../context/FloorPlanContext'
-import {
-  FURNITURE_CATALOG,
-  type FloorPlan,
-  type Opening,
-  type Wall,
-} from '../types/floorPlan'
-import { canWalkTo, pointOnWall, splitWallSegments, wallAngle } from '../utils/geometry'
+import type { Wall } from '../types/floorPlan'
+import { pointOnWall, wallAngle, wallLength } from '../utils/geometry'
 import { WORKSPACE_SIZE } from '../utils/workspace'
+
+function walkSpawnFromWalls(walls: Wall[]): THREE.Vector3 {
+  if (walls.length === 0) {
+    return new THREE.Vector3(WORKSPACE_SIZE.width / 2, 1.6, WORKSPACE_SIZE.height / 2)
+  }
+
+  let minX = Infinity
+  let maxX = -Infinity
+  let minZ = Infinity
+  let maxZ = -Infinity
+  for (const wall of walls) {
+    for (const p of [wall.start, wall.end]) {
+      minX = Math.min(minX, p.x)
+      maxX = Math.max(maxX, p.x)
+      minZ = Math.min(minZ, p.y)
+      maxZ = Math.max(maxZ, p.y)
+    }
+  }
+
+  return new THREE.Vector3((minX + maxX) / 2, 1.6, (minZ + maxZ) / 2)
+}
 
 function WallMesh({
   wall,
@@ -40,103 +56,17 @@ function WallMesh({
   )
 }
 
-function OpeningFrame({ wall, opening }: { wall: Wall; opening: Opening }) {
-  const center = pointOnWall(wall, opening.offset)
-  const angle = wallAngle(wall)
-  const color = opening.type === 'door' ? '#92400e' : '#7dd3fc'
-
-  return (
-    <group
-      position={[center.x, opening.sillHeight + opening.height / 2, center.y]}
-      rotation={[0, -angle, 0]}
-    >
-      <mesh castShadow>
-        <boxGeometry args={[opening.width, opening.height, 0.15]} />
-        <meshStandardMaterial
-          color={color}
-          transparent
-          opacity={opening.type === 'window' ? 0.45 : 0.85}
-        />
-      </mesh>
-    </group>
-  )
-}
-
-function FurnitureMesh({
-  type,
-  position,
-  rotation,
-}: {
-  type: keyof typeof FURNITURE_CATALOG
-  position: { x: number; y: number }
-  rotation: number
-}) {
-  const cat = FURNITURE_CATALOG[type]
-  return (
-    <mesh
-      position={[position.x, cat.height / 2, position.y]}
-      rotation={[0, -rotation, 0]}
-      castShadow
-      receiveShadow
-    >
-      <boxGeometry args={[cat.width, cat.height, cat.depth]} />
-      <meshStandardMaterial color={cat.color} />
-    </mesh>
-  )
-}
-
-function StaircaseMesh({
-  position,
-  rotation,
-  width,
-  length,
-  rise,
-}: {
-  position: { x: number; y: number }
-  rotation: number
-  width: number
-  length: number
-  rise: number
-}) {
-  const steps = 10
-  const stepHeight = rise / steps
-  const stepDepth = length / steps
-
-  return (
-    <group position={[position.x, 0, position.y]} rotation={[0, -rotation, 0]}>
-      {Array.from({ length: steps }, (_, i) => (
-        <mesh
-          key={i}
-          position={[0, stepHeight * (i + 0.5), -length / 2 + stepDepth * (i + 0.5)]}
-          castShadow
-          receiveShadow
-        >
-          <boxGeometry args={[width, stepHeight, stepDepth]} />
-          <meshStandardMaterial color="#94a3b8" />
-        </mesh>
-      ))}
-    </group>
-  )
-}
-
 function SceneContent({
-  plan,
   walls,
   workspaceWidth,
   workspaceHeight,
   selectedWallId,
 }: {
-  plan: FloorPlan
   walls: Wall[]
   workspaceWidth: number
   workspaceHeight: number
   selectedWallId: string | null
 }) {
-  const wallSegments = useMemo(
-    () => walls.flatMap((wall) => splitWallSegments(wall, plan.openings)),
-    [walls, plan.openings],
-  )
-
   return (
     <>
       <Sky sunPosition={[100, 40, 100]} />
@@ -162,33 +92,14 @@ function SceneContent({
         position={[workspaceWidth / 2, 0.01, workspaceHeight / 2]}
       />
 
-      {wallSegments.map((segment, i) => (
+      {walls.map((wall) => (
         <WallMesh
-          key={`${segment.wall.id}-${segment.startOffset}-${i}`}
-          wall={segment.wall}
-          startOffset={segment.startOffset}
-          endOffset={segment.endOffset}
-          selected={segment.wall.id === selectedWallId}
+          key={wall.id}
+          wall={wall}
+          startOffset={0}
+          endOffset={wallLength(wall)}
+          selected={wall.id === selectedWallId}
         />
-      ))}
-
-      {plan.openings.map((opening) => {
-        const wall = walls.find((w) => w.id === opening.wallId)
-        if (!wall) return null
-        return <OpeningFrame key={opening.id} wall={wall} opening={opening} />
-      })}
-
-      {plan.furniture.map((item) => (
-        <FurnitureMesh
-          key={item.id}
-          type={item.type}
-          position={item.position}
-          rotation={item.rotation}
-        />
-      ))}
-
-      {plan.staircases.map((stair) => (
-        <StaircaseMesh key={stair.id} {...stair} />
       ))}
     </>
   )
@@ -230,14 +141,22 @@ function OrbitCamera({ walls }: { walls: Wall[] }) {
 }
 
 function WalkControls({ walls }: { walls: Wall[] }) {
-  const controlsRef = useRef<THREE.EventDispatcher | null>(null)
-  const positionRef = useRef(new THREE.Vector3(5, 1.6, 5))
+  const { camera } = useThree()
+  const positionRef = useRef(new THREE.Vector3())
   const keys = useRef({ w: false, a: false, s: false, d: false })
+
+  useEffect(() => {
+    const spawn = walkSpawnFromWalls(walls)
+    positionRef.current.copy(spawn)
+    camera.position.copy(spawn)
+  }, [camera, walls])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase()
-      if (key in keys.current) keys.current[key as keyof typeof keys.current] = true
+      if (key in keys.current) {
+        keys.current[key as keyof typeof keys.current] = true
+      }
     }
     const onKeyUp = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase()
@@ -251,59 +170,42 @@ function WalkControls({ walls }: { walls: Wall[] }) {
     }
   }, [])
 
-  useEffect(() => {
-    let frame = 0
-    const tick = () => {
-      const controls = controlsRef.current as unknown as {
-        object: THREE.Camera
-        getDirection: (target: THREE.Vector3) => THREE.Vector3
-      } | null
+  useFrame(() => {
+    const dir = new THREE.Vector3()
+    camera.getWorldDirection(dir)
+    dir.y = 0
+    if (dir.lengthSq() < 1e-6) return
+    dir.normalize()
 
-      if (controls?.object) {
-        const speed = 0.12
-        const dir = new THREE.Vector3()
-        controls.getDirection(dir)
-        dir.y = 0
-        dir.normalize()
-        const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize()
+    const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize()
+    const move = new THREE.Vector3()
+    if (keys.current.w) move.add(dir)
+    if (keys.current.s) move.sub(dir)
+    if (keys.current.d) move.add(right)
+    if (keys.current.a) move.sub(right)
 
-        const move = new THREE.Vector3()
-        if (keys.current.w) move.add(dir)
-        if (keys.current.s) move.sub(dir)
-        if (keys.current.d) move.add(right)
-        if (keys.current.a) move.sub(right)
-
-        if (move.lengthSq() > 0) {
-          move.normalize().multiplyScalar(speed)
-          const from = { x: positionRef.current.x, y: positionRef.current.z }
-          const to = { x: from.x + move.x, y: from.y + move.z }
-          if (canWalkTo(from, to, walls)) {
-            positionRef.current.x = to.x
-            positionRef.current.z = to.y
-          }
-        }
-
-        controls.object.position.copy(positionRef.current)
-      }
-      frame = requestAnimationFrame(tick)
+    if (move.lengthSq() > 0) {
+      move.normalize().multiplyScalar(0.15)
+      positionRef.current.x += move.x
+      positionRef.current.z += move.z
     }
-    frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
-  }, [walls])
 
-  return <PointerLockControls ref={controlsRef as never} />
+    camera.position.x = positionRef.current.x
+    camera.position.y = positionRef.current.y
+    camera.position.z = positionRef.current.z
+  })
+
+  return <PointerLockControls />
 }
 
 function CameraRig({
   walkMode,
-  plan,
   walls,
   workspaceWidth,
   workspaceHeight,
   selectedWallId,
 }: {
   walkMode: boolean
-  plan: FloorPlan
   walls: Wall[]
   workspaceWidth: number
   workspaceHeight: number
@@ -314,7 +216,6 @@ function CameraRig({
       <>
         <WalkControls walls={walls} />
         <SceneContent
-          plan={plan}
           walls={walls}
           workspaceWidth={workspaceWidth}
           workspaceHeight={workspaceHeight}
@@ -328,7 +229,6 @@ function CameraRig({
     <>
       <OrbitCamera walls={walls} />
       <SceneContent
-        plan={plan}
         walls={walls}
         workspaceWidth={workspaceWidth}
         workspaceHeight={workspaceHeight}
@@ -340,7 +240,7 @@ function CameraRig({
 
 export function View3D() {
   const { state, setWalkMode, planWalls } = useFloorPlan()
-  const { plan, walkMode, selectedId } = state
+  const { walkMode, selectedId } = state
 
   return (
     <div className={`panel view3d-panel ${walkMode ? 'walk-active' : ''}`}>
@@ -355,7 +255,6 @@ export function View3D() {
           <Suspense fallback={null}>
             <CameraRig
               walkMode={walkMode}
-              plan={plan}
               walls={planWalls}
               workspaceWidth={WORKSPACE_SIZE.width}
               workspaceHeight={WORKSPACE_SIZE.height}
