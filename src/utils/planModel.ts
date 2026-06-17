@@ -13,6 +13,7 @@ import {
   type Vertex,
   type Wall,
 } from '../types/floorPlan'
+import { wallsShareSegment } from './geometry'
 import { snapToGrid } from './imperial'
 
 function snapPoint(point: Point2D): Point2D {
@@ -422,20 +423,47 @@ export function deleteWall(plan: FloorPlan, wallId: string): FloorPlan {
   const wall = getWall(plan, wallId)
   if (!wall) return plan
 
-  const room = getRoom(plan, wall.roomId)
-  if (!room) return plan
+  const resolved = resolveWall(plan, wall)
+  const removeIds = new Set<string>([wallId])
+  if (resolved) {
+    for (const other of plan.walls) {
+      if (other.id === wallId) continue
+      const otherResolved = resolveWall(plan, other)
+      if (otherResolved && wallsShareSegment(resolved, otherResolved)) {
+        removeIds.add(other.id)
+      }
+    }
+  }
 
-  const wallIds = room.wallIds.filter((id) => id !== wallId)
+  const roomsToUpdate = new Map<string, string[]>()
+  for (const id of removeIds) {
+    const w = getWall(plan, id)
+    if (!w) continue
+    const room = getRoom(plan, w.roomId)
+    if (!room) continue
+    const wallIds = roomsToUpdate.get(room.id) ?? room.wallIds
+    roomsToUpdate.set(room.id, wallIds.filter((wid) => wid !== id))
+  }
+
+  const orphanVertices = new Set<string>()
+  for (const id of removeIds) {
+    const w = getWall(plan, id)
+    if (w) {
+      orphanVertices.add(w.startVertexId)
+      orphanVertices.add(w.endVertexId)
+    }
+  }
 
   return removeVerticesIfOrphaned(
     {
       ...plan,
-      walls: plan.walls.filter((w) => w.id !== wallId),
-      rooms: plan.rooms.map((r) =>
-        r.id === room.id ? { ...r, wallIds } : r,
-      ),
+      walls: plan.walls.filter((w) => !removeIds.has(w.id)),
+      rooms: plan.rooms.map((r) => {
+        const wallIds = roomsToUpdate.get(r.id)
+        return wallIds ? { ...r, wallIds } : r
+      }),
     },
-    [wall.startVertexId, wall.endVertexId],
+    [...orphanVertices],
   )
 }
 
@@ -488,6 +516,19 @@ export function duplicateRoom(plan: FloorPlan, roomId: string): FloorPlan {
     walls: [...plan.walls, ...newWalls],
     rooms: [...plan.rooms, duplicate],
   }
+}
+
+export function reorderRoom(plan: FloorPlan, activeId: string, overId: string): FloorPlan {
+  if (activeId === overId) return plan
+  const fromIndex = plan.rooms.findIndex((r) => r.id === activeId)
+  const toIndex = plan.rooms.findIndex((r) => r.id === overId)
+  if (fromIndex < 0 || toIndex < 0) return plan
+
+  const rooms = [...plan.rooms]
+  const [item] = rooms.splice(fromIndex, 1)
+  const insertAt = fromIndex < toIndex ? toIndex - 1 : toIndex
+  rooms.splice(insertAt, 0, item)
+  return { ...plan, rooms }
 }
 
 export function translateRoom(plan: FloorPlan, roomId: string, delta: Point2D): FloorPlan {

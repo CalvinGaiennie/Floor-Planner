@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type DragEvent } from 'react'
 import { useFloorPlan } from '../context/FloorPlanContext'
 import type { Room } from '../types/floorPlan'
 import { MIN_WALL_LENGTH } from '../types/floorPlan'
@@ -96,12 +96,27 @@ function RoomThumbnail({ room, plan }: { room: Room; plan: import('../types/floo
   )
 }
 
+function DragHandleIcon() {
+  return (
+    <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" aria-hidden="true">
+      <circle cx="2.5" cy="2.5" r="1.25" />
+      <circle cx="7.5" cy="2.5" r="1.25" />
+      <circle cx="2.5" cy="7" r="1.25" />
+      <circle cx="7.5" cy="7" r="1.25" />
+      <circle cx="2.5" cy="11.5" r="1.25" />
+      <circle cx="7.5" cy="11.5" r="1.25" />
+    </svg>
+  )
+}
+
 export function RoomListPanel() {
-  const { state, selectedRoom, select, setTool, updateRoom } = useFloorPlan()
+  const { state, selectedRoom, select, setTool, updateRoom, reorderRoomInList } = useFloorPlan()
   const { plan } = state
   const { rooms } = plan
   const [open, setOpen] = useState(() => localStorage.getItem(ROOMS_OPEN_KEY) !== '0')
   const [expandedRoomIds, setExpandedRoomIds] = useState<Set<string>>(() => new Set())
+  const [dragRoomId, setDragRoomId] = useState<string | null>(null)
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null)
 
   useEffect(() => {
     localStorage.setItem(ROOMS_OPEN_KEY, open ? '1' : '0')
@@ -125,6 +140,30 @@ export function RoomListPanel() {
       width: field === 'width' ? value : current.width,
       depth: field === 'depth' ? value : current.depth,
     })
+  }
+
+  const handleDragStart = (roomId: string) => {
+    setDragRoomId(roomId)
+    setDropTargetId(null)
+  }
+
+  const handleDragEnd = () => {
+    setDragRoomId(null)
+    setDropTargetId(null)
+  }
+
+  const handleDragOver = (e: DragEvent, roomId: string) => {
+    e.preventDefault()
+    if (!dragRoomId || dragRoomId === roomId) return
+    setDropTargetId(roomId)
+  }
+
+  const handleDrop = (e: DragEvent, overId: string) => {
+    e.preventDefault()
+    const activeId = dragRoomId
+    handleDragEnd()
+    if (!activeId || activeId === overId) return
+    reorderRoomInList(activeId, overId)
   }
 
   return (
@@ -167,14 +206,36 @@ export function RoomListPanel() {
                   const expanded = expandedRoomIds.has(room.id)
                   const { width, depth } = roomBoundingSize(plan, room)
                   const closed = isRoomClosed(plan, room)
+                  const dragging = dragRoomId === room.id
+                  const dropTarget = dropTargetId === room.id && dragRoomId !== room.id
                   return (
-                    <li key={room.id} className={`room-list-entry${selected ? ' selected' : ''}${expanded ? ' expanded' : ''}`}>
-                      <button
-                        type="button"
-                        className="room-list-item"
-                        onClick={() => handleRowClick(room.id)}
-                        aria-expanded={expanded}
-                      >
+                    <li
+                      key={room.id}
+                      className={`room-list-entry${selected ? ' selected' : ''}${expanded ? ' expanded' : ''}${dragging ? ' dragging' : ''}${dropTarget ? ' drop-target' : ''}`}
+                      onDragOver={(e) => handleDragOver(e, room.id)}
+                      onDrop={(e) => handleDrop(e, room.id)}
+                    >
+                      <div className="room-list-row">
+                        <span
+                          className="room-list-drag-handle"
+                          draggable
+                          title="Drag to reorder"
+                          aria-label={`Reorder ${room.name}`}
+                          onDragStart={(e) => {
+                            e.dataTransfer.effectAllowed = 'move'
+                            e.dataTransfer.setData('text/plain', room.id)
+                            handleDragStart(room.id)
+                          }}
+                          onDragEnd={handleDragEnd}
+                        >
+                          <DragHandleIcon />
+                        </span>
+                        <button
+                          type="button"
+                          className="room-list-item"
+                          onClick={() => handleRowClick(room.id)}
+                          aria-expanded={expanded}
+                        >
                         <RoomThumbnail room={room} plan={plan} />
                         <span className="room-list-details">
                           <span className="room-list-name">
@@ -186,6 +247,7 @@ export function RoomListPanel() {
                           </span>
                         </span>
                       </button>
+                      </div>
                       {expanded && (
                         <div className="room-list-edit">
                           <label className="room-list-field">

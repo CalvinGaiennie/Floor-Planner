@@ -2,6 +2,56 @@ import type { Point2D, Wall } from '../types/floorPlan'
 
 export const ROTATE_STEP_RADIANS = Math.PI / 2
 
+/** Max distance from a wall centerline to count as a hit (feet). */
+export const WALL_HIT_DISTANCE = 1.5
+
+const COINCIDENT_WALL_SEGMENT_DISTANCE = 0.08
+
+export function wallsShareSegment(a: Wall, b: Wall, epsilon = COINCIDENT_WALL_SEGMENT_DISTANCE): boolean {
+  return (
+    (distance(a.start, b.start) < epsilon && distance(a.end, b.end) < epsilon) ||
+    (distance(a.start, b.end) < epsilon && distance(a.end, b.start) < epsilon)
+  )
+}
+
+export function findWallAtPoint(
+  walls: Wall[],
+  point: Point2D,
+  containingRoomIds: string[] = [],
+): string | null {
+  const hits: Array<{ wall: Wall; dist: number }> = []
+  for (const wall of walls) {
+    const { dist } = projectOntoWall(wall, point)
+    if (dist <= WALL_HIT_DISTANCE) hits.push({ wall, dist })
+  }
+  if (hits.length === 0) return null
+
+  hits.sort((a, b) => a.dist - b.dist)
+  const bestDist = hits[0].dist
+  const near = hits.filter((h) => h.dist - bestDist <= COINCIDENT_WALL_SEGMENT_DISTANCE)
+
+  const segmentGroups: Array<Array<{ wall: Wall; dist: number }>> = []
+  for (const hit of near) {
+    const group = segmentGroups.find((g) => wallsShareSegment(g[0].wall, hit.wall))
+    if (group) group.push(hit)
+    else segmentGroups.push([hit])
+  }
+
+  const group = segmentGroups[0]
+  if (group.length === 1) return group[0].wall.id
+
+  const neighborWalls = group.filter((h) => !containingRoomIds.includes(h.wall.roomId))
+  if (neighborWalls.length > 0) return neighborWalls[0].wall.id
+
+  return group[0].wall.id
+}
+
+export function findCoincidentWallIds(planWalls: Wall[], wallId: string): string[] {
+  const target = planWalls.find((w) => w.id === wallId)
+  if (!target) return [wallId]
+  return planWalls.filter((w) => w.id === wallId || wallsShareSegment(target, w)).map((w) => w.id)
+}
+
 export function rotationDegrees(radians: number): number {
   const deg = (radians * 180) / Math.PI
   return Math.round(((deg % 360) + 360) % 360)

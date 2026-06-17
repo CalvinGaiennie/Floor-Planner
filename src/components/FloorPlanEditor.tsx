@@ -12,7 +12,7 @@ import {
   PIXELS_PER_FOOT,
   WORKSPACE_SIZE,
 } from '../utils/workspace'
-import { projectOntoWall, pointOnWall, wallLength } from '../utils/geometry'
+import { pointOnWall, wallLength, findWallAtPoint, findCoincidentWallIds } from '../utils/geometry'
 import {
   createWallDragAnchor,
   findVertexNear,
@@ -335,6 +335,16 @@ export function FloorPlanEditor() {
 
   const hitTest = useCallback(
     (point: Point2D): string | null => {
+      const containingRoomIds = plan.rooms
+        .filter((room) => isPointInsideRoom(plan, point, room))
+        .map((room) => room.id)
+
+      const door = findDoorAtPoint(plan, planWalls, point)
+      if (door) return door.id
+
+      const wallId = findWallAtPoint(planWalls, point, containingRoomIds)
+      if (wallId) return wallId
+
       for (const v of plan.vertices) {
         if (Math.hypot(v.x - point.x, v.y - point.y) < VERTEX_SNAP_DISTANCE) return v.id
       }
@@ -345,20 +355,6 @@ export function FloorPlanEditor() {
           if (v && Math.hypot(v.x - point.x, v.y - point.y) < VERTEX_SNAP_DISTANCE) return vid
         }
       }
-
-      const door = findDoorAtPoint(plan, planWalls, point)
-      if (door) return door.id
-
-      let bestWallId: string | null = null
-      let bestWallDist = 1.25
-      for (const wall of planWalls) {
-        const { dist } = projectOntoWall(wall, point)
-        if (dist < bestWallDist) {
-          bestWallDist = dist
-          bestWallId = wall.id
-        }
-      }
-      if (bestWallId) return bestWallId
 
       const furniture = findFurnitureAtPoint(plan, point)
       if (furniture) return furniture.id
@@ -581,9 +577,14 @@ export function FloorPlanEditor() {
       ctx.restore()
     }
 
+    const selectedWallIds =
+      selectedId && isPlanWallId(plan, selectedId)
+        ? new Set(findCoincidentWallIds(planWalls, selectedId))
+        : null
+
     for (const wall of planWalls) {
       const segments = wallSolidSegments(wall, plan.doors)
-      const isSelected = wall.id === selectedId
+      const isSelected = selectedWallIds?.has(wall.id) ?? false
       const lineWidth = isSelected
         ? Math.max(3, wall.thickness * PIXELS_PER_FOOT * scale)
         : Math.max(1.5, wall.thickness * PIXELS_PER_FOOT * scale)

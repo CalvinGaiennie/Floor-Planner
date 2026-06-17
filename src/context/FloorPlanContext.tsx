@@ -25,6 +25,7 @@ import {
   deleteWall,
   dragWallPerpendicular,
   duplicateRoom,
+  reorderRoom,
   findRoomByVertexId,
   findRoomByWallId,
   getRoom,
@@ -140,6 +141,7 @@ type Action =
   | { type: 'DELETE_SELECTED' }
   | { type: 'DUPLICATE_ROOM'; id: string }
   | { type: 'DUPLICATE_FURNITURE'; id: string }
+  | { type: 'REORDER_ROOM'; activeId: string; overId: string }
   | { type: 'MOVE_ROOM'; roomId: string; point: { x: number; y: number } }
   | { type: 'RESIZE_WALL'; wallId: string; point: { x: number; y: number }; anchor: WallDragAnchor }
   | { type: 'MOVE_VERTEX'; vertexId: string; point: { x: number; y: number } }
@@ -161,6 +163,7 @@ const PLAN_UNDO_ACTIONS = new Set<Action['type']>([
   'DELETE_SELECTED',
   'DUPLICATE_ROOM',
   'DUPLICATE_FURNITURE',
+  'REORDER_ROOM',
   'MOVE_ROOM',
   'RESIZE_WALL',
   'MOVE_VERTEX',
@@ -276,6 +279,12 @@ function reducer(state: EditorState, action: Action): EditorState {
         plan,
         selectedId: newId,
         tool: 'select',
+      }
+    }
+    case 'REORDER_ROOM': {
+      return {
+        ...state,
+        plan: reorderRoom(state.plan, action.activeId, action.overId),
       }
     }
     case 'MOVE_ROOM': {
@@ -413,6 +422,7 @@ interface FloorPlanContextValue {
   deleteSelected: () => void
   duplicateRoom: (id: string) => void
   duplicateFurniture: (id: string) => void
+  reorderRoomInList: (activeId: string, overId: string) => void
   moveRoom: (roomId: string, point: { x: number; y: number }) => void
   resizeWall: (wallId: string, point: { x: number; y: number }, anchor: WallDragAnchor) => void
   moveVertex: (vertexId: string, point: { x: number; y: number }) => void
@@ -1034,6 +1044,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       deleteSelected: () => dispatchAction({ type: 'DELETE_SELECTED' }),
       duplicateRoom: (id) => dispatchAction({ type: 'DUPLICATE_ROOM', id }),
       duplicateFurniture: (id) => dispatchAction({ type: 'DUPLICATE_FURNITURE', id }),
+      reorderRoomInList: (activeId, overId) =>
+        dispatchAction({ type: 'REORDER_ROOM', activeId, overId }),
       moveRoom: (roomId, point) => dispatchAction({ type: 'MOVE_ROOM', roomId, point }),
       resizeWall: (wallId, point, anchor) =>
         dispatchAction({ type: 'RESIZE_WALL', wallId, point, anchor }),

@@ -2,7 +2,8 @@ import { useFloorPlan } from '../context/FloorPlanContext'
 import { rotationDegrees } from '../utils/geometry'
 import { formatFeetInches } from '../utils/imperial'
 import { doorStyleLabel, doorSwingLabel } from '../utils/doors'
-import { roomBoundingSize } from '../utils/planModel'
+import { getWall, isPlanWallId, resolveWall, roomBoundingSize } from '../utils/planModel'
+import { wallLength } from '../utils/geometry'
 
 function RotateButtons({
   onRotate,
@@ -45,6 +46,33 @@ export function RoomBottomBar() {
     duplicateFurniture,
     rotateSelected,
   } = useFloorPlan()
+
+  const selectedWall =
+    state.selectedId && isPlanWallId(state.plan, state.selectedId)
+      ? resolveWall(state.plan, getWall(state.plan, state.selectedId)!)
+      : null
+
+  if (selectedWall) {
+    return (
+      <footer className="room-bottom-bar">
+        <label className="bar-field-compact bar-field-readonly">
+          <span>Type</span>
+          <input type="text" readOnly value="Wall" />
+        </label>
+
+        <label className="bar-field-compact bar-field-readonly">
+          <span>Length</span>
+          <input type="text" readOnly value={formatFeetInches(wallLength(selectedWall))} />
+        </label>
+
+        <div className="room-bottom-bar-actions">
+          <button type="button" className="danger" onClick={deleteSelected}>
+            Delete
+          </button>
+        </div>
+      </footer>
+    )
+  }
 
   if (selectedDoor) {
     return (
@@ -130,7 +158,7 @@ export function RoomBottomBar() {
     return (
       <footer className="room-bottom-bar room-bottom-bar-empty">
         <span className="room-bottom-bar-hint">
-          Select a room, wall, door, or furniture. Press R to rotate or flip door swing.
+          Select a room, wall, door, or furniture. Click wall centerlines to select shared walls.
         </span>
       </footer>
     )
