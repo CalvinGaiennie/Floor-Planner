@@ -7,7 +7,10 @@ import {
 } from '../types/floorPlan'
 import {
   computeFitScale,
+  computeFitScaleForBounds,
+  computePlanContentBounds,
   MAX_ZOOM_SCALE,
+  offsetToCenterPlanPoint,
   PIXELS_PER_FOOT,
   WORKSPACE_SIZE,
 } from '../utils/workspace'
@@ -197,6 +200,38 @@ export function FloorPlanEditor() {
       y: currentOffset.y + (planAfter.y - planBefore.y) * PIXELS_PER_FOOT * clamped,
     })
   }, [])
+
+  const fitToView = useCallback(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const rect = container.getBoundingClientRect()
+    const workspaceFit = computeFitScale(rect.width, rect.height)
+    setFitScale(workspaceFit)
+
+    const bounds = computePlanContentBounds(plan)
+    if (!bounds) {
+      userAdjustedRef.current = false
+      const workspacePxW = WORKSPACE_SIZE.width * PIXELS_PER_FOOT * workspaceFit
+      const workspacePxH = WORKSPACE_SIZE.height * PIXELS_PER_FOOT * workspaceFit
+      setScale(workspaceFit)
+      setOffset({
+        x: (rect.width - workspacePxW) / 2,
+        y: (rect.height - workspacePxH) / 2,
+      })
+      return
+    }
+
+    userAdjustedRef.current = true
+    const contentFit = computeFitScaleForBounds(rect.width, rect.height, bounds)
+    const nextScale = Math.min(MAX_ZOOM_SCALE, Math.max(workspaceFit, contentFit))
+    const center = {
+      x: (bounds.minX + bounds.maxX) / 2,
+      y: (bounds.minY + bounds.maxY) / 2,
+    }
+    setScale(nextScale)
+    setOffset(offsetToCenterPlanPoint(rect.width, rect.height, center, nextScale))
+  }, [plan])
 
   const zoomSliderValue =
     MAX_ZOOM_SCALE > fitScale
@@ -683,8 +718,8 @@ export function FloorPlanEditor() {
           <button
             type="button"
             className="zoom-fit-btn"
-            title="Fit workspace"
-            onClick={() => applyZoomScale(fitScale)}
+            title="Fit view to your plan (rooms and items); empty plans show full workspace"
+            onClick={fitToView}
           >
             Fit
           </button>

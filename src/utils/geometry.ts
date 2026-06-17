@@ -121,6 +121,28 @@ export function segmentEndpoints(segment: WallSegment): { start: Point2D; end: P
   }
 }
 
+export function orientedBoxCorners(
+  center: Point2D,
+  width: number,
+  depth: number,
+  rotation: number,
+): Point2D[] {
+  const hw = width / 2
+  const hd = depth / 2
+  const cos = Math.cos(rotation)
+  const sin = Math.sin(rotation)
+  const local = [
+    { x: -hw, y: -hd },
+    { x: hw, y: -hd },
+    { x: hw, y: hd },
+    { x: -hw, y: hd },
+  ]
+  return local.map((p) => ({
+    x: center.x + p.x * cos - p.y * sin,
+    y: center.y + p.x * sin + p.y * cos,
+  }))
+}
+
 export function isPointInsideFurniture(
   point: Point2D,
   center: Point2D,
