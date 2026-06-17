@@ -2,11 +2,77 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /users/{userId}/plans/{planId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    function isAuthenticated() {
+      return request.auth != null;
     }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAcceptedFriend(ownerId, viewerId) {
+      return exists(/databases/$(database)/documents/users/$(ownerId)/friends/$(viewerId));
+    }
+
+    function canReadPlan(ownerId) {
+      return isOwner(ownerId) || isAcceptedFriend(ownerId, request.auth.uid);
+    }
+
+    function isPlanEditor() {
+      return request.auth.uid in resource.data.get('editors', []);
+    }
+
+    function canWritePlan(ownerId) {
+      return isOwner(ownerId) || (canReadPlan(ownerId) && isPlanEditor());
+    }
+
+    match /directory/{emailKey} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated()
+        && request.resource.data.uid == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.uid == request.auth.uid;
+    }
+
+    match /users/{userId}/incomingFriendRequests/{fromUid} {
+      allow read: if isOwner(userId) || request.auth.uid == fromUid;
+      allow create: if isAuthenticated()
+        && request.auth.uid == fromUid
+        && request.resource.data.fromUid == fromUid
+        && userId != fromUid;
+      allow update, delete: if isOwner(userId) || request.auth.uid == fromUid;
+    }
+
+    match /users/{userId}/friends/{friendUid} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId)
+        || (isAuthenticated()
+          && request.auth.uid == friendUid
+          && exists(/databases/$(database)/documents/users/$(friendUid)/incomingFriendRequests/$(userId)));
+      allow update, delete: if isOwner(userId);
+    }
+
+    match /users/{ownerId}/collaborateRequests/{requestId} {
+      allow read: if isOwner(ownerId)
+        || (isAuthenticated() && resource.data.fromUid == request.auth.uid);
+      allow create: if isAuthenticated()
+        && isAcceptedFriend(ownerId, request.auth.uid)
+        && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow update, delete: if isOwner(ownerId);
+    }
+
+    match /users/{userId}/plans/{planId} {
+      allow read: if canReadPlan(userId);
+      allow create: if isOwner(userId);
+      allow delete: if isOwner(userId);
+      allow update: if isOwner(userId)
+        || (canWritePlan(userId)
+          && request.resource.data.editors == resource.data.editors
+          && request.resource.data.createdAt == resource.data.createdAt);
+    }
+
     match /users/{userId}/data/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isOwner(userId);
     }
   }
 }

@@ -45,7 +45,9 @@ import {
   resolveWalls,
   rotateRoom,
   sanitizePlan,
+  roomsGroupCentroid,
   translateRoom,
+  translateRooms,
   updateRoomDefaults,
   type WallDragAnchor,
 } from '../utils/planModel'
@@ -94,10 +96,14 @@ import {
   loadPlanFromFirestoreServer,
   loadMasterNoteFromFirestore,
   loadUserPlansSession,
+  listPlansFromFirestore,
+  getPlanAccess,
   saveMasterNoteToFirestore,
   savePlanToFirestore,
   setActivePlanIdInFirestore,
+  type PlanAccess,
 } from '../services/firestorePlans'
+import { listFriends, listMyPendingCollaborateRequests, sendCollaborateRequest } from '../services/firestoreFriends'
 import { isFirebaseConfigured, getFirebaseProjectId } from '../lib/firebase'
 import {
   logCloudError,
@@ -106,6 +112,12 @@ import {
 } from '../utils/cloudErrors'
 
 const MAX_UNDO_HISTORY = 50
+
+export interface FriendPlansGroup {
+  ownerId: string
+  ownerName: string
+  plans: PlanSummary[]
+}
 
 function clonePlan(plan: FloorPlan): FloorPlan {
   return structuredClone(plan)
@@ -123,6 +135,7 @@ interface EditorState {
   tool: Tool
   viewMode: ViewMode
   selectedId: string | null
+  selectedRoomIds: string[]
   placementCatalogId: string | null
 }
 
@@ -137,7 +150,7 @@ type RoomPatch = {
 type Action =
   | { type: 'SET_TOOL'; tool: Tool }
   | { type: 'SET_VIEW_MODE'; viewMode: ViewMode }
-  | { type: 'SELECT'; id: string | null }
+  | { type: 'SELECT'; id: string | null; additive?: boolean; preserveRoomSelection?: boolean }
   | { type: 'SET_PLAN'; plan: FloorPlan }
   | { type: 'SET_PLAN_NAME'; name: string }
   | { type: 'SET_PLAN_NOTES'; notes: string }
@@ -155,6 +168,7 @@ type Action =
   | { type: 'DISCONNECT_WALL_FROM_VERTEX'; wallId: string; vertexId: string }
   | { type: 'DISCONNECT_VERTEX_ROOM'; vertexId: string; roomId: string }
   | { type: 'MOVE_ROOM'; roomId: string; point: { x: number; y: number } }
+  | { type: 'MOVE_ROOMS'; roomIds: string[]; point: { x: number; y: number } }
   | { type: 'RESIZE_WALL'; wallId: string; point: { x: number; y: number }; anchor: WallDragAnchor }
   | { type: 'MOVE_VERTEX'; vertexId: string; point: { x: number; y: number } }
   | { type: 'ADD_WALL'; start: { x: number; y: number }; end: { x: number; y: number } }
@@ -183,6 +197,7 @@ const PLAN_UNDO_ACTIONS = new Set<Action['type']>([
   'DISCONNECT_WALL_FROM_VERTEX',
   'DISCONNECT_VERTEX_ROOM',
   'MOVE_ROOM',
+  'MOVE_ROOMS',
   'RESIZE_WALL',
   'MOVE_VERTEX',
   'ADD_WALL',
@@ -197,6 +212,7 @@ const PLAN_UNDO_ACTIONS = new Set<Action['type']>([
 
 const CONTINUOUS_UNDO_ACTIONS = new Set<Action['type']>([
   'MOVE_ROOM',
+  'MOVE_ROOMS',
   'RESIZE_WALL',
   'MOVE_VERTEX',
   'MOVE_FURNITURE',
@@ -213,6 +229,34 @@ function snapPoint(point: { x: number; y: number }) {
   return { x: snapToGrid(point.x), y: snapToGrid(point.y) }
 }
 
+function isRoomId(plan: FloorPlan, id: string) {
+  return plan.rooms.some((r) => r.id === id)
+}
+
+function applySelect(
+  state: EditorState,
+  id: string | null,
+  additive?: boolean,
+  preserveRoomSelection?: boolean,
+): EditorState {
+  if (id === null) {
+    return { ...state, selectedId: null, selectedRoomIds: [] }
+  }
+  if (isRoomId(state.plan, id)) {
+    if (additive) {
+      const selectedRoomIds = state.selectedRoomIds.includes(id)
+        ? state.selectedRoomIds.filter((rid) => rid !== id)
+        : [...state.selectedRoomIds, id]
+      return { ...state, selectedId: id, selectedRoomIds }
+    }
+    if (preserveRoomSelection && state.selectedRoomIds.includes(id)) {
+      return { ...state, selectedId: id }
+    }
+    return { ...state, selectedId: id, selectedRoomIds: [id] }
+  }
+  return { ...state, selectedId: id, selectedRoomIds: [] }
+}
+
 function reducer(state: EditorState, action: Action): EditorState {
   switch (action.type) {
     case 'SET_TOOL':
@@ -220,9 +264,9 @@ function reducer(state: EditorState, action: Action): EditorState {
     case 'SET_VIEW_MODE':
       return { ...state, viewMode: action.viewMode }
     case 'SELECT':
-      return { ...state, selectedId: action.id }
+      return applySelect(state, action.id, action.additive, action.preserveRoomSelection)
     case 'SET_PLAN':
-      return { ...state, plan: action.plan, selectedId: null }
+      return { ...state, plan: action.plan, selectedId: null, selectedRoomIds: [] }
     case 'SET_PLAN_NAME':
       return { ...state, plan: { ...state.plan, name: action.name } }
     case 'SET_PLAN_NOTES':
@@ -236,6 +280,7 @@ function reducer(state: EditorState, action: Action): EditorState {
         ...state,
         plan,
         selectedId: room?.id ?? null,
+        selectedRoomIds: room ? [room.id] : [],
         tool: 'select',
       }
     }
@@ -264,18 +309,38 @@ function reducer(state: EditorState, action: Action): EditorState {
       const id = state.selectedId
       let nextState: EditorState
       if (isFurnitureId(state.plan, id)) {
-        nextState = { ...state, selectedId: null, plan: deleteFurniture(state.plan, id) }
+        nextState = {
+          ...state,
+          selectedId: null,
+          selectedRoomIds: [],
+          plan: deleteFurniture(state.plan, id),
+        }
       } else if (isDoorId(state.plan, id)) {
-        nextState = { ...state, selectedId: null, plan: deleteDoor(state.plan, id) }
+        nextState = {
+          ...state,
+          selectedId: null,
+          selectedRoomIds: [],
+          plan: deleteDoor(state.plan, id),
+        }
       } else if (isPlanWallId(state.plan, id)) {
-        nextState = { ...state, selectedId: null, plan: deleteWall(state.plan, id) }
+        nextState = {
+          ...state,
+          selectedId: null,
+          selectedRoomIds: [],
+          plan: deleteWall(state.plan, id),
+        }
       } else {
         const room =
           state.plan.rooms.find((r) => r.id === id) ??
           findRoomByWallId(state.plan, id) ??
           findRoomByVertexId(state.plan, id)
-        if (!room) return { ...state, selectedId: null }
-        nextState = { ...state, selectedId: null, plan: deleteRoom(state.plan, room.id) }
+        if (!room) return { ...state, selectedId: null, selectedRoomIds: [] }
+        nextState = {
+          ...state,
+          selectedId: null,
+          selectedRoomIds: [],
+          plan: deleteRoom(state.plan, room.id),
+        }
       }
       return state.tool === 'delete' ? { ...nextState, tool: 'select' } : nextState
     }
@@ -286,6 +351,7 @@ function reducer(state: EditorState, action: Action): EditorState {
         ...state,
         plan,
         selectedId: room?.id ?? null,
+        selectedRoomIds: room ? [room.id] : [],
         tool: 'select',
       }
     }
@@ -296,6 +362,7 @@ function reducer(state: EditorState, action: Action): EditorState {
         ...state,
         plan,
         selectedId: newId,
+        selectedRoomIds: [],
         tool: 'select',
       }
     }
@@ -346,6 +413,17 @@ function reducer(state: EditorState, action: Action): EditorState {
         plan: translateRoom(state.plan, action.roomId, delta),
       }
     }
+    case 'MOVE_ROOMS': {
+      const roomIds = action.roomIds.filter((id) => state.plan.rooms.some((r) => r.id === id))
+      if (roomIds.length === 0) return state
+      const target = snapPoint(action.point)
+      const center = roomsGroupCentroid(state.plan, roomIds)
+      const delta = { x: target.x - center.x, y: target.y - center.y }
+      return {
+        ...state,
+        plan: translateRooms(state.plan, roomIds, delta),
+      }
+    }
     case 'RESIZE_WALL': {
       return {
         ...state,
@@ -371,6 +449,7 @@ function reducer(state: EditorState, action: Action): EditorState {
         ...state,
         plan,
         selectedId: wall?.id ?? state.selectedId,
+        selectedRoomIds: [],
         tool: 'select',
       }
     }
@@ -381,6 +460,7 @@ function reducer(state: EditorState, action: Action): EditorState {
         ...state,
         plan,
         selectedId: item?.id ?? state.selectedId,
+        selectedRoomIds: [],
         placementCatalogId: null,
         tool: 'select',
       }
@@ -403,6 +483,7 @@ function reducer(state: EditorState, action: Action): EditorState {
         ...state,
         plan,
         selectedId: door.id,
+        selectedRoomIds: [],
         tool: 'select',
       }
     }
@@ -447,7 +528,7 @@ interface FloorPlanContextValue {
   activePlanId: string | null
   setTool: (tool: Tool) => void
   setViewMode: (mode: ViewMode) => void
-  select: (id: string | null) => void
+  select: (id: string | null, options?: { additive?: boolean; preserveRoomSelection?: boolean }) => void
   setPlan: (plan: FloorPlan) => void
   setPlanName: (name: string) => void
   setPlanNotes: (notes: string) => void
@@ -478,16 +559,21 @@ interface FloorPlanContextValue {
   disconnectWallFromCorner: (wallId: string, vertexId: string) => void
   disconnectCornerFromRoom: (vertexId: string, roomId: string) => void
   moveRoom: (roomId: string, point: { x: number; y: number }) => void
+  moveRooms: (roomIds: string[], point: { x: number; y: number }) => void
   resizeWall: (wallId: string, point: { x: number; y: number }, anchor: WallDragAnchor) => void
   moveVertex: (vertexId: string, point: { x: number; y: number }) => void
   addWall: (start: { x: number; y: number }, end: { x: number; y: number }) => void
   finishGeometryEdit: () => void
   createNewPlan: () => Promise<void>
   switchPlan: (planId: string) => Promise<void>
+  openFriendPlan: (ownerId: string, planId: string) => Promise<void>
+  refreshFriendPlans: () => Promise<void>
   deleteCurrentPlan: () => Promise<void>
   recordUndoSnapshot: () => void
   undo: () => void
   selectedRoom: Room | null
+  selectedRoomIds: string[]
+  selectedRooms: Room[]
   selectedFurniture: FurnitureItem | null
   selectedDoor: Door | null
   planWalls: ReturnType<typeof resolveWalls>
@@ -498,6 +584,13 @@ interface FloorPlanContextValue {
   unsavedCloudChanges: number
   cloudSaveInFlight: boolean
   forceCloudSave: () => Promise<boolean>
+  planOwnerId: string | null
+  planOwnerName: string | null
+  planAccess: PlanAccess
+  readOnlyMode: boolean
+  friendPlansGroups: FriendPlansGroup[]
+  requestCollaborateOnCurrentPlan: () => Promise<void>
+  pendingCollaborateOnCurrentPlan: boolean
 }
 
 const FloorPlanContext = createContext<FloorPlanContextValue | null>(null)
@@ -513,6 +606,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     tool: 'select',
     viewMode: 'plan2d',
     selectedId: null,
+    selectedRoomIds: [],
     placementCatalogId: null,
   })
   const [furnitureCatalog, setFurnitureCatalogState] = useState<FurnitureCatalogEntry[]>(
@@ -521,8 +615,18 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   const [cloudAlert, setCloudAlert] = useState<CloudSyncAlert | null>(null)
   const [unsavedCloudChanges, setUnsavedCloudChanges] = useState(0)
   const [cloudSaveInFlight, setCloudSaveInFlight] = useState(false)
+  const [planOwnerId, setPlanOwnerId] = useState<string | null>(null)
+  const [planOwnerName, setPlanOwnerName] = useState<string | null>(null)
+  const [planAccess, setPlanAccess] = useState<PlanAccess>('owner')
+  const [friendPlansGroups, setFriendPlansGroups] = useState<FriendPlansGroup[]>([])
+  const [pendingCollaborateOnCurrentPlan, setPendingCollaborateOnCurrentPlan] = useState(false)
 
-  const cloudSyncActive = Boolean(user && isFirebaseConfigured())
+  const readOnlyMode = planAccess === 'view'
+  const cloudSyncActive = Boolean(
+    user &&
+      isFirebaseConfigured() &&
+      (planAccess === 'owner' || planAccess === 'edit'),
+  )
 
   const reportCloudError = useCallback(
     (
@@ -559,6 +663,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   const saveGenerationRef = useRef(0)
   const planSummariesRef = useRef(planSummaries)
   planSummariesRef.current = planSummaries
+  const planOwnerIdRef = useRef<string | null>(null)
+  planOwnerIdRef.current = planOwnerId
   const continuousGestureRef = useRef(false)
 
   const resetUnsavedCloudChanges = useCallback(() => {
@@ -578,10 +684,11 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     ): Promise<boolean> => {
       if (!user || !planId || !isFirebaseConfigured()) return true
 
+      const ownerId = planOwnerIdRef.current ?? user.uid
       const generation = ++saveGenerationRef.current
       setCloudSaveInFlight(true)
       try {
-        await savePlanToFirestore(user.uid, planId, plan)
+        await savePlanToFirestore(ownerId, planId, plan)
         if (generation === saveGenerationRef.current) {
           consecutiveSaveFailuresRef.current = 0
           setCloudAlert(null)
@@ -693,6 +800,10 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
           skipNextCloudSaveRef.current = true
           setPlanSummaries(session.plans)
           setActivePlanId(session.activePlanId)
+          setPlanOwnerId(user.uid)
+          setPlanOwnerName(null)
+          setPlanAccess('owner')
+          setPendingCollaborateOnCurrentPlan(false)
           dispatch({ type: 'SET_PLAN', plan: session.plan })
         } else {
           const session = getMemoryPlansSession()
@@ -702,6 +813,10 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
           skipNextCloudSaveRef.current = true
           setPlanSummaries(session.plans)
           setActivePlanId(session.activePlanId)
+          setPlanOwnerId(null)
+          setPlanOwnerName(null)
+          setPlanAccess('owner')
+          setPendingCollaborateOnCurrentPlan(false)
           dispatch({ type: 'SET_PLAN', plan: session.plan })
         }
         resetUndoStacks()
@@ -745,6 +860,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
 
   const dispatchAction = useCallback(
     (action: Action) => {
+      if (readOnlyMode) return
       if (cloudSyncActive && CLOUD_SAVE_CHANGE_ACTIONS.has(action.type)) {
         if (CONTINUOUS_UNDO_ACTIONS.has(action.type)) {
           if (!continuousGestureRef.current) {
@@ -761,7 +877,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       }
       dispatch(action)
     },
-    [cloudSyncActive, bumpUnsavedCloudChanges, recordUndoSnapshot],
+    [readOnlyMode, cloudSyncActive, bumpUnsavedCloudChanges, recordUndoSnapshot],
   )
 
   const undo = useCallback(() => {
@@ -777,9 +893,11 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!planReady || !activePlanId) return
 
-    setPlanSummaries((prev) =>
-      prev.map((p) => (p.id === activePlanId ? { ...p, name: state.plan.name } : p)),
-    )
+    if (planAccess === 'owner' && planOwnerId === user?.uid) {
+      setPlanSummaries((prev) =>
+        prev.map((p) => (p.id === activePlanId ? { ...p, name: state.plan.name } : p)),
+      )
+    }
 
     if (!user || !isFirebaseConfigured()) {
       saveMemoryPlan(activePlanId, state.plan)
@@ -794,19 +912,21 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     }
 
     persistPlanToCloud(planRef.current, activePlanId)
-  }, [state.plan, user, planReady, activePlanId, persistPlanToCloud, resetUnsavedCloudChanges])
+  }, [state.plan, user, planReady, activePlanId, planAccess, planOwnerId, persistPlanToCloud, resetUnsavedCloudChanges])
 
   useEffect(() => {
     const onPageHide = () => {
       const planId = activePlanIdRef.current
       const uid = user?.uid
-      if (!planId || !uid || !isFirebaseConfigured()) return
-      savePlanToFirestore(uid, planId, planRef.current).catch(() => {})
+      const ownerId = planOwnerIdRef.current
+      if (!planId || !uid || !ownerId || !isFirebaseConfigured()) return
+      if (planAccess !== 'owner' && planAccess !== 'edit') return
+      savePlanToFirestore(ownerId, planId, planRef.current).catch(() => {})
     }
 
     window.addEventListener('pagehide', onPageHide)
     return () => window.removeEventListener('pagehide', onPageHide)
-  }, [user])
+  }, [user, planAccess])
 
   useEffect(() => {
     return () => {
@@ -838,9 +958,20 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   }, [undo, bumpUnsavedCloudChanges])
 
   const planWalls = useMemo(() => resolveWalls(state.plan), [state.plan])
+  const selectedRoomIds = state.selectedRoomIds
+  const selectedRooms = useMemo(
+    () =>
+      selectedRoomIds
+        .map((id) => getRoom(state.plan, id))
+        .filter((room): room is Room => room !== undefined),
+    [state.plan, selectedRoomIds],
+  )
   const selectedRoom = useMemo(() => {
     const direct = state.plan.rooms.find((r) => r.id === state.selectedId)
     if (direct) return direct
+    if (state.selectedRoomIds.length > 0) {
+      return getRoom(state.plan, state.selectedRoomIds[0]) ?? null
+    }
     if (state.selectedId && isPlanWallId(state.plan, state.selectedId)) {
       return findRoomByWallId(state.plan, state.selectedId) ?? null
     }
@@ -848,7 +979,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       return findRoomByVertexId(state.plan, state.selectedId) ?? null
     }
     return null
-  }, [state.plan, state.selectedId])
+  }, [state.plan, state.selectedId, state.selectedRoomIds])
 
   const selectedFurniture = useMemo(() => {
     if (!state.selectedId || !isFurnitureId(state.plan, state.selectedId)) return null
@@ -891,6 +1022,10 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       prev.some((p) => p.id === planId) ? prev : [...prev, { id: planId!, name: plan.name }],
     )
     setActivePlanId(planId)
+    setPlanOwnerId(user?.uid ?? null)
+    setPlanOwnerName(null)
+    setPlanAccess('owner')
+    setPendingCollaborateOnCurrentPlan(false)
     dispatch({ type: 'SET_PLAN', plan })
     resetUndoStacks()
   }, [flushCloudSave, user, resetUndoStacks, resetUnsavedCloudChanges])
@@ -940,6 +1075,10 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       resetUnsavedCloudChanges()
       continuousGestureRef.current = false
       setActivePlanId(planId)
+      setPlanOwnerId(user?.uid ?? null)
+      setPlanOwnerName(null)
+      setPlanAccess('owner')
+      setPendingCollaborateOnCurrentPlan(false)
       dispatch({
         type: 'SET_PLAN',
         plan: plan ?? createEmptyPlan(planSummariesRef.current.find((p) => p.id === planId)?.name),
@@ -949,7 +1088,118 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     [flushCloudSave, user, resetUndoStacks, reportCloudError, resetUnsavedCloudChanges],
   )
 
+  const refreshFriendPlans = useCallback(async () => {
+    if (!user || !isFirebaseConfigured()) {
+      setFriendPlansGroups([])
+      return
+    }
+
+    try {
+      const friends = await listFriends(user.uid)
+      const groups = await Promise.all(
+        friends.map(async (friend) => {
+          const plans = await listPlansFromFirestore(friend.friendUid)
+          const withAccess = await Promise.all(
+            plans.map(async (p) => {
+              const access = await getPlanAccess(friend.friendUid, p.id, user.uid)
+              return {
+                ...p,
+                ownerId: friend.friendUid,
+                ownerName: friend.friendDisplayName,
+                access: access ?? 'view',
+              }
+            }),
+          )
+          return {
+            ownerId: friend.friendUid,
+            ownerName: friend.friendDisplayName,
+            plans: withAccess,
+          }
+        }),
+      )
+      setFriendPlansGroups(groups)
+    } catch {
+      setFriendPlansGroups([])
+    }
+  }, [user])
+
+  const openFriendPlan = useCallback(
+    async (ownerId: string, planId: string) => {
+      if (!user || !isFirebaseConfigured()) return
+
+      const currentId = activePlanIdRef.current
+      if (planId !== currentId) {
+        try {
+          await flushCloudSave()
+        } catch {
+          // Continue switching even if saving fails.
+        }
+      }
+
+      try {
+        const access = await getPlanAccess(ownerId, planId, user.uid)
+        if (!access || access === 'owner') return
+
+        const plan = await loadPlanFromFirestoreServer(ownerId, planId)
+        if (!plan) {
+          reportCloudError('switch-plan', 'Could not load that shared plan.', undefined, planId)
+          return
+        }
+
+        const ownerGroup = friendPlansGroups.find((g) => g.ownerId === ownerId)
+        const ownerName = ownerGroup?.ownerName ?? 'Friend'
+
+        const pending = await listMyPendingCollaborateRequests(ownerId, user.uid)
+        const hasPending = pending.some((r) => r.planId === planId)
+
+        skipNextCloudSaveRef.current = true
+        resetUnsavedCloudChanges()
+        continuousGestureRef.current = false
+        setActivePlanId(planId)
+        setPlanOwnerId(ownerId)
+        setPlanOwnerName(ownerName)
+        setPlanAccess(access)
+        setPendingCollaborateOnCurrentPlan(hasPending)
+        setCloudAlert(null)
+        dispatch({ type: 'SET_PLAN', plan })
+        resetUndoStacks()
+      } catch (err) {
+        reportCloudError('switch-plan', 'Could not open that shared plan.', err, planId)
+      }
+    },
+    [
+      user,
+      flushCloudSave,
+      friendPlansGroups,
+      resetUnsavedCloudChanges,
+      reportCloudError,
+      resetUndoStacks,
+    ],
+  )
+
+  const requestCollaborateOnCurrentPlan = useCallback(async () => {
+    if (!user || !planOwnerId || !activePlanId || planAccess !== 'view') return
+
+    await sendCollaborateRequest(
+      planOwnerId,
+      activePlanId,
+      state.plan.name,
+      user.uid,
+      user.displayName ?? user.email ?? 'User',
+    )
+    setPendingCollaborateOnCurrentPlan(true)
+  }, [user, planOwnerId, activePlanId, planAccess, state.plan.name])
+
+  useEffect(() => {
+    if (user && isFirebaseConfigured()) {
+      refreshFriendPlans()
+    } else {
+      setFriendPlansGroups([])
+    }
+  }, [user, refreshFriendPlans])
+
   const deleteCurrentPlan = useCallback(async () => {
+    if (planAccess !== 'owner') return
     const currentId = activePlanIdRef.current
     const summaries = planSummariesRef.current
     if (!currentId || summaries.length <= 1) return
@@ -1078,7 +1328,13 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       activePlanId,
       setTool: (tool) => dispatch({ type: 'SET_TOOL', tool }),
       setViewMode: (viewMode) => dispatch({ type: 'SET_VIEW_MODE', viewMode }),
-      select: (id) => dispatch({ type: 'SELECT', id }),
+      select: (id, options) =>
+        dispatch({
+          type: 'SELECT',
+          id,
+          additive: options?.additive,
+          preserveRoomSelection: options?.preserveRoomSelection,
+        }),
       setPlan: (plan) => dispatchAction({ type: 'SET_PLAN', plan }),
       setPlanName: (name) => dispatchAction({ type: 'SET_PLAN_NAME', name }),
       setPlanNotes: (notes) => dispatchAction({ type: 'SET_PLAN_NOTES', notes }),
@@ -1112,6 +1368,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       disconnectCornerFromRoom: (vertexId, roomId) =>
         dispatchAction({ type: 'DISCONNECT_VERTEX_ROOM', vertexId, roomId }),
       moveRoom: (roomId, point) => dispatchAction({ type: 'MOVE_ROOM', roomId, point }),
+      moveRooms: (roomIds, point) => dispatchAction({ type: 'MOVE_ROOMS', roomIds, point }),
       resizeWall: (wallId, point, anchor) =>
         dispatchAction({ type: 'RESIZE_WALL', wallId, point, anchor }),
       moveVertex: (vertexId, point) =>
@@ -1123,10 +1380,14 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       },
       createNewPlan,
       switchPlan,
+      openFriendPlan,
+      refreshFriendPlans,
       deleteCurrentPlan,
       recordUndoSnapshot,
       undo,
       selectedRoom,
+      selectedRoomIds,
+      selectedRooms,
       selectedFurniture,
       selectedDoor,
       planWalls,
@@ -1137,6 +1398,13 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       unsavedCloudChanges,
       cloudSaveInFlight,
       forceCloudSave,
+      planOwnerId,
+      planOwnerName,
+      planAccess,
+      readOnlyMode,
+      friendPlansGroups,
+      requestCollaborateOnCurrentPlan,
+      pendingCollaborateOnCurrentPlan,
     }),
     [
       state,
@@ -1146,6 +1414,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       furnitureCatalog,
       planWalls,
       selectedRoom,
+      selectedRoomIds,
+      selectedRooms,
       selectedFurniture,
       selectedDoor,
       recordUndoSnapshot,
@@ -1153,6 +1423,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       planReady,
       createNewPlan,
       switchPlan,
+      openFriendPlan,
+      refreshFriendPlans,
       deleteCurrentPlan,
       dispatchAction,
       setMasterNote,
@@ -1168,6 +1440,13 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       unsavedCloudChanges,
       cloudSaveInFlight,
       forceCloudSave,
+      planOwnerId,
+      planOwnerName,
+      planAccess,
+      readOnlyMode,
+      friendPlansGroups,
+      requestCollaborateOnCurrentPlan,
+      pendingCollaborateOnCurrentPlan,
     ],
   )
 

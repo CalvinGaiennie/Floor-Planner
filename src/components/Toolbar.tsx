@@ -33,10 +33,15 @@ export function Toolbar() {
     state,
     planSummaries,
     activePlanId,
+    friendPlansGroups,
+    planAccess,
+    planOwnerId,
+    readOnlyMode,
     setTool,
     setViewMode,
     createNewPlan,
     switchPlan,
+    openFriendPlan,
     deleteCurrentPlan,
     setPlan,
     firebaseProjectId,
@@ -112,12 +117,17 @@ export function Toolbar() {
               role="menu"
               style={{ top: planMenuPos.top, left: planMenuPos.left }}
             >
+              {planSummaries.length > 0 && (
+                <div className="toolbar-plan-menu-section" role="none">My plans</div>
+              )}
               {planSummaries.map((p) => (
                 <button
                   key={p.id}
                   type="button"
                   role="menuitem"
-                  className={p.id === activePlanId ? 'active' : ''}
+                  className={
+                    p.id === activePlanId && planAccess === 'owner' ? 'active' : ''
+                  }
                   onClick={() => {
                     switchPlan(p.id)
                     setPlanMenuOpen(false)
@@ -126,17 +136,49 @@ export function Toolbar() {
                   {p.name}
                 </button>
               ))}
+              {friendPlansGroups.map((group) =>
+                group.plans.length > 0 ? (
+                  <div key={group.ownerId}>
+                    <div className="toolbar-plan-menu-section" role="none">
+                      {group.ownerName}
+                    </div>
+                    {group.plans.map((p) => (
+                      <button
+                        key={`${group.ownerId}-${p.id}`}
+                        type="button"
+                        role="menuitem"
+                        className={
+                          p.id === activePlanId &&
+                          planAccess !== 'owner' &&
+                          planOwnerId === group.ownerId
+                            ? 'active'
+                            : ''
+                        }
+                        onClick={() => {
+                          openFriendPlan(group.ownerId, p.id)
+                          setPlanMenuOpen(false)
+                        }}
+                      >
+                        {p.name}
+                        <span className="toolbar-plan-access">
+                          {p.access === 'edit' ? 'Edit' : 'View'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null,
+              )}
             </div>
           )}
         </div>
-        <button type="button" onClick={() => createNewPlan()} title="New home">
+        <button type="button" onClick={() => createNewPlan()} title="New home" disabled={readOnlyMode}>
           + New
         </button>
         <button
           type="button"
           className="danger"
           onClick={() => deleteCurrentPlan()}
-          disabled={planSummaries.length <= 1}
+          disabled={planSummaries.length <= 1 || planAccess !== 'owner'}
           title="Delete this home"
         >
           Delete
@@ -150,6 +192,7 @@ export function Toolbar() {
               key={tool.id}
               type="button"
               className={state.tool === tool.id ? 'active' : ''}
+              disabled={readOnlyMode && tool.id !== 'select'}
               onClick={() => setTool(tool.id)}
             >
               {tool.label}

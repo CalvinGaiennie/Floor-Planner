@@ -883,13 +883,34 @@ export function reorderRoom(plan: FloorPlan, activeId: string, overId: string): 
 }
 
 export function translateRoom(plan: FloorPlan, roomId: string, delta: Point2D): FloorPlan {
-  const room = getRoom(plan, roomId)
-  if (!room) return plan
-  const ids = roomVertexIds(plan, room)
+  return translateRooms(plan, [roomId], delta)
+}
+
+export function roomsGroupCentroid(plan: FloorPlan, roomIds: string[]): Point2D {
+  const centroids = roomIds
+    .map((id) => getRoom(plan, id))
+    .filter((room): room is Room => room !== undefined)
+    .map((room) => roomCentroid(plan, room))
+  if (centroids.length === 0) return { x: 0, y: 0 }
+  const sum = centroids.reduce(
+    (acc, c) => ({ x: acc.x + c.x, y: acc.y + c.y }),
+    { x: 0, y: 0 },
+  )
+  return { x: sum.x / centroids.length, y: sum.y / centroids.length }
+}
+
+export function translateRooms(plan: FloorPlan, roomIds: string[], delta: Point2D): FloorPlan {
+  const vertexIdSet = new Set<string>()
+  for (const roomId of roomIds) {
+    const room = getRoom(plan, roomId)
+    if (!room) continue
+    for (const vid of roomVertexIds(plan, room)) vertexIdSet.add(vid)
+  }
+  if (vertexIdSet.size === 0) return plan
   return {
     ...plan,
     vertices: plan.vertices.map((v) =>
-      ids.includes(v.id)
+      vertexIdSet.has(v.id)
         ? { ...v, x: snapToGrid(v.x + delta.x), y: snapToGrid(v.y + delta.y) }
         : v,
     ),
@@ -931,6 +952,79 @@ export function moveVertex(plan: FloorPlan, vertexId: string, point: Point2D): F
   }
 }
 
+const COLLINEAR_EPSILON = 1e-3
+
+function wallDirection(resolved: Wall): Point2D {
+  return { x: resolved.end.x - resolved.start.x, y: resolved.end.y - resolved.start.y }
+}
+
+function isPointOnLine(
+  point: Point2D,
+  origin: Point2D,
+  dir: Point2D,
+  epsilon: number,
+): boolean {
+  const cross = (point.x - origin.x) * dir.y - (point.y - origin.y) * dir.x
+  const dirLen = Math.hypot(dir.x, dir.y)
+  if (dirLen < 1e-6) return false
+  return Math.abs(cross) <= epsilon * dirLen
+}
+
+function areWallsCollinear(plan: FloorPlan, refResolved: Wall, wall: PlanWall): boolean {
+  const resolved = resolveWall(plan, wall)
+  if (!resolved) return false
+
+  const refDir = wallDirection(refResolved)
+  const refLen = Math.hypot(refDir.x, refDir.y)
+  if (refLen < 1e-6) return false
+
+  const wallDir = wallDirection(resolved)
+  const wallLen = Math.hypot(wallDir.x, wallDir.y)
+  if (wallLen < 1e-6) return false
+
+  const cross = refDir.x * wallDir.y - refDir.y * wallDir.x
+  if (Math.abs(cross) > COLLINEAR_EPSILON * refLen * wallLen) return false
+
+  return (
+    isPointOnLine(resolved.start, refResolved.start, refDir, COLLINEAR_EPSILON) &&
+    isPointOnLine(resolved.end, refResolved.start, refDir, COLLINEAR_EPSILON)
+  )
+}
+
+export function collectCollinearChainVertexIds(plan: FloorPlan, wallId: string): string[] {
+  const wall = getWall(plan, wallId)
+  if (!wall) return []
+
+  const refResolved = resolveWall(plan, wall)
+  if (!refResolved) return []
+
+  const refWall: Wall = refResolved
+  const refDir = wallDirection(refWall)
+  if (Math.hypot(refDir.x, refDir.y) < 1e-6) return []
+
+  const vertexIds = new Set<string>()
+
+  function walk(vertexId: string, fromWallId: string) {
+    if (vertexIds.has(vertexId)) return
+    vertexIds.add(vertexId)
+
+    for (const incidentWall of wallsAtVertex(plan, vertexId)) {
+      if (incidentWall.id === fromWallId) continue
+      if (!areWallsCollinear(plan, refWall, incidentWall)) continue
+
+      const otherVertexId =
+        incidentWall.startVertexId === vertexId
+          ? incidentWall.endVertexId
+          : incidentWall.startVertexId
+      walk(otherVertexId, incidentWall.id)
+    }
+  }
+
+  walk(wall.startVertexId, wallId)
+  walk(wall.endVertexId, wallId)
+  return [...vertexIds]
+}
+
 export interface WallDragAnchor {
   wallId: string
   normalX: number
@@ -962,7 +1056,7 @@ export function createWallDragAnchor(
   const startSigned = (grabPoint.x - midX) * nx + (grabPoint.y - midY) * ny
 
   const startVertices: Record<string, Point2D> = {}
-  for (const vid of [wall.startVertexId, wall.endVertexId]) {
+  for (const vid of collectCollinearChainVertexIds(plan, wallId)) {
     const v = getVertex(plan, vid)
     if (v) startVertices[vid] = { x: v.x, y: v.y }
   }

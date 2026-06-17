@@ -154,6 +154,9 @@ export function saveMasterNoteLocal(note: string): void {
 export interface PlanSummary {
   id: string
   name: string
+  ownerId?: string
+  ownerName?: string
+  access?: 'owner' | 'view' | 'edit'
 }
 
 export function nextDefaultPlanName(existing: PlanSummary[]): string {

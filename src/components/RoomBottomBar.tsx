@@ -55,6 +55,11 @@ export function RoomBottomBar() {
     selectedFurniture,
     selectedDoor,
     state,
+    readOnlyMode,
+    planOwnerName,
+    planAccess,
+    requestCollaborateOnCurrentPlan,
+    pendingCollaborateOnCurrentPlan,
     updateRoom,
     deleteSelected,
     duplicateRoom,
@@ -83,6 +88,29 @@ export function RoomBottomBar() {
 
   const selectedVertexId =
     state.selectedId && isVertexId(state.plan, state.selectedId) ? state.selectedId : null
+
+  if (readOnlyMode && planOwnerName) {
+    return (
+      <footer className="room-bottom-bar">
+        <span className="room-bottom-bar-hint">
+          Viewing {planOwnerName}&apos;s plan — view only.
+        </span>
+        {planAccess === 'view' ? (
+          <button
+            type="button"
+            disabled={pendingCollaborateOnCurrentPlan}
+            onClick={() => requestCollaborateOnCurrentPlan()}
+          >
+            {pendingCollaborateOnCurrentPlan
+              ? 'Collaborate request sent'
+              : 'Request to collaborate'}
+          </button>
+        ) : (
+          <span className="room-bottom-bar-hint">You can edit this plan.</span>
+        )}
+      </footer>
+    )
+  }
 
   if (selectedWall) {
     return (
@@ -290,6 +318,17 @@ export function RoomBottomBar() {
               )
             })}
         </div>
+      </footer>
+    )
+  }
+
+  if (state.selectedRoomIds.length > 1) {
+    return (
+      <footer className="room-bottom-bar">
+        <span className="room-bottom-bar-hint">
+          {state.selectedRoomIds.length} rooms selected — drag to move together. Shift-click (or
+          Cmd/Ctrl-click) to change selection.
+        </span>
       </footer>
     )
   }

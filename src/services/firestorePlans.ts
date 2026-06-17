@@ -15,8 +15,10 @@ import { createEmptyPlan } from '../types/floorPlan'
 import { db, isFirebaseConfigured } from '../lib/firebase'
 import { clearLegacyLocalPlans, readLegacyLocalPlansSession } from '../utils/legacyLocalMigration'
 import { normalizePlanFromJson, type PlanSummary } from '../utils/storage'
+import { listFriends } from './firestoreFriends'
 
 export type { PlanSummary }
+export type PlanAccess = 'owner' | 'view' | 'edit'
 
 const SETTINGS_DOC_ID = 'settings'
 const LEGACY_PLAN_DOC_ID = 'plan'
@@ -39,6 +41,56 @@ function plansCollection(userId: string) {
 function summaryFromDoc(id: string, data: Record<string, unknown>): PlanSummary {
   const plan = data.plan as FloorPlan | undefined
   return { id, name: plan?.name?.trim() || 'Untitled' }
+}
+
+function planEditorsFromData(data: Record<string, unknown>): string[] {
+  const editors = data.editors
+  if (!Array.isArray(editors)) return []
+  return editors.filter((e): e is string => typeof e === 'string')
+}
+
+export async function getPlanEditors(ownerId: string, planId: string): Promise<string[]> {
+  if (!isFirebaseConfigured() || !db) return []
+
+  const snap = await getDoc(planRef(ownerId, planId))
+  if (!snap.exists()) return []
+  return planEditorsFromData(snap.data())
+}
+
+export async function addPlanEditor(
+  ownerId: string,
+  planId: string,
+  editorUid: string,
+): Promise<void> {
+  if (!isFirebaseConfigured() || !db) return
+
+  const snap = await getDoc(planRef(ownerId, planId))
+  if (!snap.exists()) return
+
+  const editors = new Set(planEditorsFromData(snap.data()))
+  editors.add(editorUid)
+  await setDoc(
+    planRef(ownerId, planId),
+    { editors: [...editors], updatedAt: serverTimestamp() },
+    { merge: true },
+  )
+}
+
+export async function getPlanAccess(
+  ownerId: string,
+  planId: string,
+  viewerUid: string,
+): Promise<PlanAccess | null> {
+  if (!isFirebaseConfigured() || !db) return null
+
+  if (ownerId === viewerUid) return 'owner'
+
+  const friends = await listFriends(viewerUid)
+  if (!friends.some((f) => f.friendUid === ownerId)) return null
+
+  const editors = await getPlanEditors(ownerId, planId)
+  if (editors.includes(viewerUid)) return 'edit'
+  return 'view'
 }
 
 export async function migrateLegacyPlanIfNeeded(userId: string): Promise<void> {
@@ -212,6 +264,7 @@ export async function createPlanInFirestore(userId: string, plan: FloorPlan): Pr
   const planId = uuid()
   await setDoc(planRef(userId, planId), {
     plan,
+    editors: [],
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   })

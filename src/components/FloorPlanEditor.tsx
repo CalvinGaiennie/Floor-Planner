@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RoomListPanel } from './RoomListPanel'
+import { FriendsPanel } from './FriendsPanel'
 import { WorkspaceAlerts } from './WorkspaceAlerts'
 import { useFloorPlan } from '../context/FloorPlanContext'
 import { GRID_SIZE, type FloorPlan, type Point2D } from '../types/floorPlan'
@@ -111,6 +112,7 @@ export function FloorPlanEditor() {
     select,
     addRoom,
     moveRoom,
+    moveRooms,
     resizeWall,
     moveVertex,
     addWall,
@@ -120,7 +122,9 @@ export function FloorPlanEditor() {
     recordUndoSnapshot,
     finishGeometryEdit,
     selectedRoom,
+    selectedRoomIds,
     setPlanName,
+    readOnlyMode,
     placementCatalogId,
     setPlacementCatalogId,
     placeFurniture,
@@ -178,7 +182,11 @@ export function FloorPlanEditor() {
   const wallDragIdRef = useRef<string | null>(null)
   const vertexDragIdRef = useRef<string | null>(null)
   const moveDragIdRef = useRef<string | null>(null)
+  const moveDragRoomIdsRef = useRef<string[]>([])
   const MOVE_DRAG_THRESHOLD_PX = 4
+
+  const isSelectionAdditive = (e: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }) =>
+    e.shiftKey || e.metaKey || e.ctrlKey
 
   const startPan = useCallback((clientX: number, clientY: number) => {
     const currentOffset = offsetRef.current
@@ -388,7 +396,16 @@ export function FloorPlanEditor() {
       const wallId = findWallAtPoint(planWalls, point, containingRoomIds)
       if (wallId) return wallId
 
-      if (selectedRoom) {
+      if (selectedRoomIds.length > 0) {
+        for (const roomId of selectedRoomIds) {
+          const room = getRoom(plan, roomId)
+          if (!room) continue
+          for (const vid of roomVertexIds(plan, room)) {
+            const v = getVertex(plan, vid)
+            if (v && Math.hypot(v.x - point.x, v.y - point.y) < vertexHitFt) return vid
+          }
+        }
+      } else if (selectedRoom) {
         for (const vid of roomVertexIds(plan, selectedRoom)) {
           const v = getVertex(plan, vid)
           if (v && Math.hypot(v.x - point.x, v.y - point.y) < vertexHitFt) return vid
@@ -403,7 +420,7 @@ export function FloorPlanEditor() {
       }
       return null
     },
-    [plan, planWalls, selectedRoom, scale],
+    [plan, planWalls, selectedRoom, selectedRoomIds, scale],
   )
 
   const draw = useCallback(() => {
@@ -491,7 +508,7 @@ export function FloorPlanEditor() {
     for (const room of plan.rooms) {
       const closedPolygon = roomClosedPolygon(plan, room)
       const closed = closedPolygon !== null
-      const selected = room.id === selectedId
+      const selected = selectedRoomIds.includes(room.id)
 
       if (closedPolygon) {
         const screenCorners = closedPolygon.map((c) => planToScreen(c, offset, scale))
@@ -716,8 +733,17 @@ export function FloorPlanEditor() {
       }
     }
 
-    if (selectedRoom) {
-      for (const vid of roomVertexIds(plan, selectedRoom)) {
+    const roomsToShowVertices =
+      selectedRoomIds.length > 0
+        ? selectedRoomIds
+            .map((id) => getRoom(plan, id))
+            .filter((room): room is NonNullable<typeof room> => room !== undefined)
+        : selectedRoom
+          ? [selectedRoom]
+          : []
+
+    for (const room of roomsToShowVertices) {
+      for (const vid of roomVertexIds(plan, room)) {
         const v = getVertex(plan, vid)
         if (!v) continue
         const screen = planToScreen(v, offset, scale)
@@ -797,7 +823,7 @@ export function FloorPlanEditor() {
         ctx.setLineDash([])
       }
     }
-  }, [plan, planWalls, offset, scale, selectedId, selectedRoom, cursorPlan, tool, wallPlaceStart, placementEntry])
+  }, [plan, planWalls, offset, scale, selectedId, selectedRoom, selectedRoomIds, cursorPlan, tool, wallPlaceStart, placementEntry])
 
   useEffect(() => {
     draw()
@@ -927,6 +953,24 @@ export function FloorPlanEditor() {
 
     if (tool === 'select') {
       const id = hitTest(point)
+      const additive = isSelectionAdditive(e)
+
+      if (additive && id && isRoomMovable(id)) {
+        select(id, { additive: true })
+        return
+      }
+
+      if (id && isRoomMovable(id)) {
+        const inSelection = selectedRoomIds.includes(id)
+        select(id, { preserveRoomSelection: inSelection })
+        recordUndoSnapshot()
+        moveDragIdRef.current = id
+        setMoveDragId(id)
+        moveDragRoomIdsRef.current = inSelection ? selectedRoomIds : [id]
+        moveDragStartRef.current = point
+        return
+      }
+
       select(id)
       if (id && isVertexId(plan, id)) {
         recordUndoSnapshot()
@@ -945,11 +989,6 @@ export function FloorPlanEditor() {
         setMoveDragId(id)
         moveDragStartRef.current = point
       } else if (id && isDoorId(plan, id)) {
-        recordUndoSnapshot()
-        moveDragIdRef.current = id
-        setMoveDragId(id)
-        moveDragStartRef.current = point
-      } else if (id && plan.rooms.some((r) => r.id === id)) {
         recordUndoSnapshot()
         moveDragIdRef.current = id
         setMoveDragId(id)
@@ -1035,6 +1074,8 @@ export function FloorPlanEditor() {
           moveFurnitureOnPlan(moveDragId, point)
         } else if (isDoorId(plan, moveDragId)) {
           moveDoorOnPlan(moveDragId, point)
+        } else if (moveDragRoomIdsRef.current.length > 1) {
+          moveRooms(moveDragRoomIdsRef.current, point)
         } else {
           moveRoom(moveDragId, point)
         }
@@ -1047,6 +1088,7 @@ export function FloorPlanEditor() {
     setPanStart(null)
     setDragging(false)
     moveDragIdRef.current = null
+    moveDragRoomIdsRef.current = []
     setMoveDragId(null)
     wallDragIdRef.current = null
     setWallDragId(null)
@@ -1098,6 +1140,7 @@ export function FloorPlanEditor() {
           className="panel-plan-name"
           value={plan.name}
           onChange={(e) => setPlanName(e.target.value)}
+          readOnly={readOnlyMode}
           aria-label="Plan name"
           placeholder="Plan name"
         />
@@ -1143,6 +1186,7 @@ export function FloorPlanEditor() {
       <div className="plan-canvas-area" ref={containerRef}>
         <WorkspaceAlerts />
         <RoomListPanel />
+        <FriendsPanel />
         <canvas
           ref={canvasRef}
           className="plan-canvas"

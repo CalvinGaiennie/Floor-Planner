@@ -1,4 +1,4 @@
-import { useEffect, useState, type DragEvent } from 'react'
+import { useEffect, useState, type DragEvent, type MouseEvent } from 'react'
 import { useFloorPlan } from '../context/FloorPlanContext'
 import type { Room } from '../types/floorPlan'
 import { MIN_WALL_LENGTH } from '../types/floorPlan'
@@ -110,7 +110,7 @@ function DragHandleIcon() {
 }
 
 export function RoomListPanel() {
-  const { state, selectedRoom, select, setTool, updateRoom, reorderRoomInList } = useFloorPlan()
+  const { state, selectedRoomIds, select, setTool, updateRoom, reorderRoomInList } = useFloorPlan()
   const { plan } = state
   const { rooms } = plan
   const [open, setOpen] = useState(() => localStorage.getItem(ROOMS_OPEN_KEY) !== '0')
@@ -122,9 +122,15 @@ export function RoomListPanel() {
     localStorage.setItem(ROOMS_OPEN_KEY, open ? '1' : '0')
   }, [open])
 
-  const handleRowClick = (roomId: string) => {
+  const handleRowClick = (roomId: string, e: MouseEvent) => {
     setTool('select')
-    select(roomId)
+    const additive = e.shiftKey || e.metaKey || e.ctrlKey
+    if (additive) {
+      select(roomId, { additive: true })
+      return
+    }
+    const inSelection = selectedRoomIds.includes(roomId)
+    select(roomId, { preserveRoomSelection: inSelection })
     setExpandedRoomIds((prev) => {
       const next = new Set(prev)
       if (next.has(roomId)) next.delete(roomId)
@@ -202,7 +208,7 @@ export function RoomListPanel() {
             ) : (
               <ul className="room-list">
                 {rooms.map((room) => {
-                  const selected = selectedRoom?.id === room.id
+                  const selected = selectedRoomIds.includes(room.id)
                   const expanded = expandedRoomIds.has(room.id)
                   const { width, depth } = roomBoundingSize(plan, room)
                   const closed = isRoomClosed(plan, room)
@@ -233,7 +239,7 @@ export function RoomListPanel() {
                         <button
                           type="button"
                           className="room-list-item"
-                          onClick={() => handleRowClick(room.id)}
+                          onClick={(e) => handleRowClick(room.id, e)}
                           aria-expanded={expanded}
                         >
                         <RoomThumbnail room={room} plan={plan} />

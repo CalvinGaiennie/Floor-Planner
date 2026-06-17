@@ -15,6 +15,7 @@ import {
   type ReactNode,
 } from 'react'
 import { auth, isFirebaseConfigured } from '../lib/firebase'
+import { registerUserDirectory } from '../services/userDirectory'
 import { parseFirebaseError, type AuthAlert } from '../utils/cloudErrors'
 
 interface AuthContextValue {
@@ -42,6 +43,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
       setUser(nextUser)
       setAuthReady(true)
+      if (nextUser?.email) {
+        registerUserDirectory(
+          nextUser.uid,
+          nextUser.email,
+          nextUser.displayName ?? nextUser.email,
+        ).catch(() => {})
+      }
     })
 
     return unsubscribe

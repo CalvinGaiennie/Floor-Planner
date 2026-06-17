@@ -1858,3 +1858,170 @@ body.project-notes-resizing {
   background: rgba(37, 99, 235, 0.08);
 }
 
+/* Friends panel */
+.friends-panel-fab {
+  pointer-events: auto;
+  position: absolute;
+  top: 48px;
+  left: 8px;
+  z-index: 12;
+  padding: 6px 10px;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: rgba(17, 24, 39, 0.92);
+  color: #e2e8f0;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.friends-panel {
+  pointer-events: auto;
+  position: absolute;
+  top: 48px;
+  left: 8px;
+  z-index: 13;
+  width: 280px;
+  max-height: min(70vh, 480px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  background: rgba(17, 24, 39, 0.95);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+
+.friends-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid #1e293b;
+}
+
+.friends-panel-header h2 {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #f1f5f9;
+}
+
+.friends-panel-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.friends-panel-section {
+  padding: 8px 10px;
+  border-bottom: 1px solid #1e293b;
+  overflow-y: auto;
+}
+
+.friends-panel-section h3 {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.friends-panel-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: #cbd5e1;
+  margin-bottom: 6px;
+}
+
+.friends-panel-label input {
+  padding: 6px 8px;
+  border: 1px solid #334155;
+  border-radius: 4px;
+  background: #0f172a;
+  color: #f1f5f9;
+}
+
+.friends-panel-error {
+  margin: 6px 0 0;
+  font-size: 0.72rem;
+  color: #f87171;
+}
+
+.friends-panel-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.friends-panel-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+  font-size: 0.78rem;
+  color: #e2e8f0;
+}
+
+.friends-panel-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.friends-panel-actions button {
+  font-size: 0.72rem;
+  padding: 4px 8px;
+}
+
+.friends-panel-empty {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.friends-panel-friend-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin-bottom: 4px;
+}
+
+.friends-panel-plan-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+
+.friends-panel-plan-list button {
+  width: 100%;
+  text-align: left;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  color: #93c5fd;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.friends-panel-access {
+  margin-left: 6px;
+  font-size: 0.65rem;
+  color: #94a3b8;
+}
+
+.toolbar-plan-menu-section {
+  padding: 6px 12px 4px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.toolbar-plan-access {
+  margin-left: 6px;
+  font-size: 0.65rem;
+  color: #64748b;
+}
+
