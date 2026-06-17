@@ -351,6 +351,97 @@ body.project-notes-resizing {
   color: #f87171;
 }
 
+.toolbar-messages {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.toolbar-hint-btn {
+  border: none;
+  background: rgba(248, 113, 113, 0.12);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  text-align: left;
+  max-width: 280px;
+  transition: background 0.15s;
+}
+
+.toolbar-hint-btn:hover {
+  background: rgba(248, 113, 113, 0.22);
+}
+
+.toolbar-hint-btn:focus-visible {
+  outline: 2px solid #f87171;
+  outline-offset: 2px;
+}
+
+.toolbar-message-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.72);
+  backdrop-filter: blur(2px);
+}
+
+.toolbar-message-modal {
+  width: min(100%, 440px);
+  padding: 20px 22px;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  background: #111827;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+}
+
+.toolbar-message-modal h2 {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.toolbar-message-modal-message {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: #fca5a5;
+}
+
+.toolbar-message-modal-details {
+  margin: 14px 0 0;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: #94a3b8;
+}
+
+.toolbar-message-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.toolbar-message-modal-actions button {
+  padding: 8px 16px;
+  border: 1px solid #3b82f6;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #fff;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.toolbar-message-modal-actions button:hover {
+  background: #1d4ed8;
+}
+
 .room-list-root {
   position: absolute;
   top: 8px;
