@@ -155,6 +155,38 @@ export function deleteFurniture(plan: FloorPlan, id: string): FloorPlan {
   return { ...plan, furniture: plan.furniture.filter((f) => f.id !== id) }
 }
 
+const FURNITURE_DUPLICATE_GAP = 0.5
+
+export function duplicateFurniture(
+  plan: FloorPlan,
+  id: string,
+): { plan: FloorPlan; newId: string | null } {
+  const item = getFurniture(plan, id)
+  if (!item) return { plan, newId: null }
+
+  const offset = item.width + FURNITURE_DUPLICATE_GAP
+  const cos = Math.cos(item.rotation)
+  const sin = Math.sin(item.rotation)
+  const center = snapFurnitureCenter(
+    { x: item.x + offset * cos, y: item.y + offset * sin },
+    item.width,
+    item.depth,
+    item.rotation,
+  )
+
+  const copy: FurnitureItem = {
+    ...item,
+    id: uuid(),
+    x: center.x,
+    y: center.y,
+  }
+
+  return {
+    plan: { ...plan, furniture: [...plan.furniture, copy] },
+    newId: copy.id,
+  }
+}
+
 export function normalizeFurnitureList(raw: unknown): FurnitureItem[] {
   if (!Array.isArray(raw)) return []
   return raw

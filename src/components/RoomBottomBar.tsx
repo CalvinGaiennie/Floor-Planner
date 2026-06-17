@@ -42,6 +42,7 @@ export function RoomBottomBar() {
     updateRoom,
     deleteSelected,
     duplicateRoom,
+    duplicateFurniture,
     rotateSelected,
   } = useFloorPlan()
 
@@ -114,6 +115,9 @@ export function RoomBottomBar() {
         <RotateButtons onRotate={rotateSelected} />
 
         <div className="room-bottom-bar-actions">
+          <button type="button" onClick={() => duplicateFurniture(selectedFurniture.id)}>
+            Duplicate
+          </button>
           <button type="button" className="danger" onClick={deleteSelected}>
             Delete
           </button>

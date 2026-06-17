@@ -59,6 +59,7 @@ import {
 import {
   addFurnitureFromCatalog,
   deleteFurniture,
+  duplicateFurniture,
   getFurniture,
   isFurnitureId,
   moveFurniture,
@@ -138,6 +139,7 @@ type Action =
   | { type: 'UPDATE_ROOM'; id: string; patch: RoomPatch }
   | { type: 'DELETE_SELECTED' }
   | { type: 'DUPLICATE_ROOM'; id: string }
+  | { type: 'DUPLICATE_FURNITURE'; id: string }
   | { type: 'MOVE_ROOM'; roomId: string; point: { x: number; y: number } }
   | { type: 'RESIZE_WALL'; wallId: string; point: { x: number; y: number }; anchor: WallDragAnchor }
   | { type: 'MOVE_VERTEX'; vertexId: string; point: { x: number; y: number } }
@@ -158,6 +160,7 @@ const PLAN_UNDO_ACTIONS = new Set<Action['type']>([
   'UPDATE_ROOM',
   'DELETE_SELECTED',
   'DUPLICATE_ROOM',
+  'DUPLICATE_FURNITURE',
   'MOVE_ROOM',
   'RESIZE_WALL',
   'MOVE_VERTEX',
@@ -256,6 +259,16 @@ function reducer(state: EditorState, action: Action): EditorState {
         ...state,
         plan,
         selectedId: room?.id ?? null,
+        tool: 'select',
+      }
+    }
+    case 'DUPLICATE_FURNITURE': {
+      const { plan, newId } = duplicateFurniture(state.plan, action.id)
+      if (!newId) return state
+      return {
+        ...state,
+        plan,
+        selectedId: newId,
         tool: 'select',
       }
     }
@@ -393,6 +406,7 @@ interface FloorPlanContextValue {
   updateRoom: (id: string, patch: RoomPatch) => void
   deleteSelected: () => void
   duplicateRoom: (id: string) => void
+  duplicateFurniture: (id: string) => void
   moveRoom: (roomId: string, point: { x: number; y: number }) => void
   resizeWall: (wallId: string, point: { x: number; y: number }, anchor: WallDragAnchor) => void
   moveVertex: (vertexId: string, point: { x: number; y: number }) => void
@@ -948,6 +962,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       updateRoom: (id, patch) => dispatchAction({ type: 'UPDATE_ROOM', id, patch }),
       deleteSelected: () => dispatchAction({ type: 'DELETE_SELECTED' }),
       duplicateRoom: (id) => dispatchAction({ type: 'DUPLICATE_ROOM', id }),
+      duplicateFurniture: (id) => dispatchAction({ type: 'DUPLICATE_FURNITURE', id }),
       moveRoom: (roomId, point) => dispatchAction({ type: 'MOVE_ROOM', roomId, point }),
       resizeWall: (wallId, point, anchor) =>
         dispatchAction({ type: 'RESIZE_WALL', wallId, point, anchor }),
