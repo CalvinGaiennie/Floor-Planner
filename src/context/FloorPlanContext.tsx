@@ -14,6 +14,7 @@ import {
   type FloorPlan,
   type Room,
   type Door,
+  type DoorStyle,
   type Tool,
   type ViewMode,
 } from '../types/floorPlan'
@@ -143,7 +144,7 @@ type Action =
   | { type: 'ADD_WALL'; start: { x: number; y: number }; end: { x: number; y: number } }
   | { type: 'ADD_FURNITURE'; entry: FurnitureCatalogEntry; point: { x: number; y: number } }
   | { type: 'MOVE_FURNITURE'; id: string; point: { x: number; y: number } }
-  | { type: 'ADD_DOOR'; point: { x: number; y: number } }
+  | { type: 'ADD_DOOR'; point: { x: number; y: number }; style?: DoorStyle }
   | { type: 'MOVE_DOOR'; id: string; point: { x: number; y: number } }
   | { type: 'ROTATE_ROOM'; roomId: string; deltaRadians: number }
   | { type: 'ROTATE_FURNITURE'; id: string; deltaRadians: number }
@@ -317,7 +318,9 @@ function reducer(state: EditorState, action: Action): EditorState {
     case 'ADD_DOOR': {
       const walls = resolveWalls(state.plan)
       const before = state.plan.doors.length
-      const plan = addDoorAtPoint(state.plan, walls, action.point)
+      const plan = addDoorAtPoint(state.plan, walls, action.point, {
+        style: action.style,
+      })
       if (plan.doors.length === before) return state
       const door = plan.doors[plan.doors.length - 1]
       return {
@@ -383,7 +386,7 @@ interface FloorPlanContextValue {
   setPlacementCatalogId: (catalogId: string | null) => void
   placeFurniture: (catalogId: string, point: { x: number; y: number }) => void
   moveFurnitureOnPlan: (id: string, point: { x: number; y: number }) => void
-  addDoor: (point: { x: number; y: number }) => void
+  addDoor: (point: { x: number; y: number }, style?: DoorStyle) => void
   moveDoorOnPlan: (id: string, point: { x: number; y: number }) => void
   rotateSelected: (direction: 'cw' | 'ccw') => void
   addRoom: (point: { x: number; y: number }) => void
@@ -880,8 +883,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   )
 
   const addDoor = useCallback(
-    (point: { x: number; y: number }) => {
-      dispatchAction({ type: 'ADD_DOOR', point })
+    (point: { x: number; y: number }, style?: DoorStyle) => {
+      dispatchAction({ type: 'ADD_DOOR', point, style })
     },
     [dispatchAction],
   )

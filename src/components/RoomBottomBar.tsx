@@ -1,7 +1,7 @@
 import { useFloorPlan } from '../context/FloorPlanContext'
 import { rotationDegrees } from '../utils/geometry'
 import { formatFeetInches } from '../utils/imperial'
-import { doorSwingLabel } from '../utils/doors'
+import { doorStyleLabel, doorSwingLabel } from '../utils/doors'
 import { roomBoundingSize } from '../utils/planModel'
 
 function RotateButtons({
@@ -64,11 +64,16 @@ export function RoomBottomBar() {
         </label>
 
         <label className="bar-field-compact bar-field-readonly">
+          <span>Type</span>
+          <input type="text" readOnly value={doorStyleLabel(selectedDoor.style)} />
+        </label>
+
+        <label className="bar-field-compact bar-field-readonly">
           <span>Swing</span>
           <input
             type="text"
             readOnly
-            value={doorSwingLabel(selectedDoor.swingMode ?? 0)}
+            value={doorSwingLabel(selectedDoor)}
             title="Use ↺ ↻ or R / Shift+R to change swing"
           />
         </label>

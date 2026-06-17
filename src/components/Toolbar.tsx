@@ -10,6 +10,7 @@ const TOOLS: { id: Tool; label: string; hint: string }[] = [
   { id: 'select', label: 'Select', hint: '' },
   { id: 'wall', label: 'Wall', hint: 'Click two points to place a wall · snaps to existing corners' },
   { id: 'door', label: 'Door', hint: 'Click near a wall to place a 3′ door' },
+  { id: 'double-door', label: 'Double door', hint: 'Click near a wall to place a 3′ double door (bathroom / closet)' },
   { id: 'room', label: 'Insert Room', hint: 'Click on the plan to place a room' },
 ]
 

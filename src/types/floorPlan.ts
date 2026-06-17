@@ -1,6 +1,6 @@
 import type { FurnitureItem } from './furniture'
 
-export type Tool = 'select' | 'room' | 'wall' | 'door' | 'delete'
+export type Tool = 'select' | 'room' | 'wall' | 'door' | 'double-door' | 'delete'
 
 export type ViewMode = 'plan2d' | 'view3d'
 
@@ -44,6 +44,9 @@ export interface Wall {
   height: number
 }
 
+/** Door opening style on 2D plans. */
+export type DoorStyle = 'single' | 'double'
+
 /** Door opening centered on a wall segment. */
 export interface Door {
   id: string
@@ -52,8 +55,10 @@ export interface Door {
   offset: number
   width: number
   height: number
-  /** 0–3: hinge side and swing direction around the wall. */
+  /** 0–3: hinge side and swing direction around the wall (single doors). */
   swingMode?: number
+  /** `double` = two half-width leaves (e.g. bathroom french / closet doors). */
+  style?: DoorStyle
 }
 
 export interface FloorPlan {
@@ -76,6 +81,7 @@ export const MIN_WALL_LENGTH = 4
 export const MAX_WALL_LENGTH = 80
 
 export const DEFAULT_DOOR_WIDTH = 3
+export const DEFAULT_DOUBLE_DOOR_WIDTH = 3
 export const DEFAULT_DOOR_HEIGHT = 6.67
 
 export function createEmptyPlan(name = 'My Home'): FloorPlan {

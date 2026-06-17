@@ -1,8 +1,9 @@
 import { v4 as uuid } from 'uuid'
-import type { Door, FloorPlan, Point2D, Wall } from '../types/floorPlan'
+import type { Door, DoorStyle, FloorPlan, Point2D, Wall } from '../types/floorPlan'
 import {
   DEFAULT_DOOR_HEIGHT,
   DEFAULT_DOOR_WIDTH,
+  DEFAULT_DOUBLE_DOOR_WIDTH,
 } from '../types/floorPlan'
 import { pointOnWall, projectOntoWall, wallAngle, wallLength } from './geometry'
 import { snapToGrid } from './imperial'
@@ -125,8 +126,12 @@ export function addDoorAtPoint(
   plan: FloorPlan,
   walls: Wall[],
   point: Point2D,
-  width = DEFAULT_DOOR_WIDTH,
+  options?: { width?: number; style?: DoorStyle },
 ): FloorPlan {
+  const style = normalizeDoorStyle(options?.style)
+  const width =
+    options?.width ??
+    (style === 'double' ? DEFAULT_DOUBLE_DOOR_WIDTH : DEFAULT_DOOR_WIDTH)
   const nearest = findNearestWall(walls, point)
   if (!nearest) return plan
 
@@ -145,6 +150,7 @@ export function addDoorAtPoint(
     width,
     height: DEFAULT_DOOR_HEIGHT,
     swingMode: 0,
+    style,
   }
 
   return { ...plan, doors: [...plan.doors, door] }
@@ -211,11 +217,25 @@ export function normalizeDoorsList(raw: unknown): Door[] {
       height:
         typeof item.height === 'number' && item.height > 0 ? item.height : DEFAULT_DOOR_HEIGHT,
       swingMode: normalizeSwingMode(item.swingMode),
+      style: normalizeDoorStyle(item.style),
     }))
 }
 
-export function doorSwingLabel(swingMode: number): string {
-  switch (swingMode % 4) {
+function normalizeDoorStyle(value: unknown): DoorStyle {
+  return value === 'double' ? 'double' : 'single'
+}
+
+export function doorStyleLabel(style: DoorStyle | undefined): string {
+  return normalizeDoorStyle(style) === 'double' ? 'Double' : 'Single'
+}
+
+export function doorSwingLabel(door: Door): string {
+  const style = normalizeDoorStyle(door.style)
+  const { swingLeft } = swingParams(door.swingMode ?? 0)
+  if (style === 'double') {
+    return swingLeft ? 'Double · swings in' : 'Double · swings out'
+  }
+  switch (normalizeSwingMode(door.swingMode ?? 0)) {
     case 0:
       return 'Hinge at start'
     case 1:
@@ -242,16 +262,23 @@ function swingParams(swingMode: number): { hingeAtStart: boolean; swingLeft: boo
   }
 }
 
-/** Hinge point and swing arc for 2D plan symbols. */
-export function doorSwingGeometry(
-  wall: Wall,
-  door: Door,
-): { hinge: Point2D; leafEnd: Point2D; arcStart: number; arcEnd: number } {
+export interface DoorSwingArc {
+  hinge: Point2D
+  leafEnd: Point2D
+  arcStart: number
+  arcEnd: number
+}
+
+function singleSwingGeometry(wall: Wall, door: Door): DoorSwingArc {
   const { hingeAtStart, swingLeft } = swingParams(door.swingMode ?? 0)
   const hingeOffset = hingeAtStart
     ? door.offset - door.width / 2
     : door.offset + door.width / 2
+  const jambOffset = hingeAtStart
+    ? door.offset + door.width / 2
+    : door.offset - door.width / 2
   const hinge = pointOnWall(wall, hingeOffset)
+  const oppositeJamb = pointOnWall(wall, jambOffset)
   const angle = wallAngle(wall)
   const perpSign = swingLeft ? 1 : -1
   const swingAngle = angle + perpSign * (Math.PI / 2)
@@ -259,5 +286,45 @@ export function doorSwingGeometry(
     x: hinge.x + Math.cos(swingAngle) * door.width,
     y: hinge.y + Math.sin(swingAngle) * door.width,
   }
-  return { hinge, leafEnd, arcStart: swingAngle, arcEnd: angle }
+  const jambAngle = Math.atan2(oppositeJamb.y - hinge.y, oppositeJamb.x - hinge.x)
+  return { hinge, leafEnd, arcStart: swingAngle, arcEnd: jambAngle }
+}
+
+function doubleSwingGeometry(wall: Wall, door: Door): DoorSwingArc[] {
+  const half = door.width / 2
+  const { swingLeft } = swingParams(door.swingMode ?? 0)
+  const perpSign = swingLeft ? 1 : -1
+  const wallDir = wallAngle(wall)
+  const leftHinge = pointOnWall(wall, door.offset - door.width / 2)
+  const rightHinge = pointOnWall(wall, door.offset + door.width / 2)
+  const center = pointOnWall(wall, door.offset)
+  const leftSwing = wallDir + perpSign * (Math.PI / 2)
+  const rightSwing = wallDir - perpSign * (Math.PI / 2)
+  const leftLeafEnd = {
+    x: leftHinge.x + Math.cos(leftSwing) * half,
+    y: leftHinge.y + Math.sin(leftSwing) * half,
+  }
+  const rightLeafEnd = {
+    x: rightHinge.x + Math.cos(rightSwing) * half,
+    y: rightHinge.y + Math.sin(rightSwing) * half,
+  }
+  const centerFromLeft = Math.atan2(center.y - leftHinge.y, center.x - leftHinge.x)
+  const centerFromRight = Math.atan2(center.y - rightHinge.y, center.x - rightHinge.x)
+  return [
+    { hinge: leftHinge, leafEnd: leftLeafEnd, arcStart: leftSwing, arcEnd: centerFromLeft },
+    { hinge: rightHinge, leafEnd: rightLeafEnd, arcStart: rightSwing, arcEnd: centerFromRight },
+  ]
+}
+
+/** Hinge point and swing arc(s) for 2D plan symbols. */
+export function doorSwingGeometries(wall: Wall, door: Door): DoorSwingArc[] {
+  if (normalizeDoorStyle(door.style) === 'double') {
+    return doubleSwingGeometry(wall, door)
+  }
+  return [singleSwingGeometry(wall, door)]
+}
+
+/** @deprecated Use doorSwingGeometries */
+export function doorSwingGeometry(wall: Wall, door: Door): DoorSwingArc {
+  return singleSwingGeometry(wall, door)
 }

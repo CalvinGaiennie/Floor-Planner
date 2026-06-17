@@ -34,13 +34,14 @@ import {
   isFurnitureId,
 } from '../utils/furniture'
 import {
-  doorSwingGeometry,
+  doorSwingGeometries,
   findDoorAtPoint,
   findNearestWall,
   isDoorId,
   wallSolidSegments,
 } from '../utils/doors'
 import { formatFeetInches, snapToGrid } from '../utils/imperial'
+import { DEFAULT_DOUBLE_DOOR_WIDTH, DEFAULT_DOOR_WIDTH } from '../types/floorPlan'
 import type { FurnitureCategory } from '../types/furniture'
 
 const FURNITURE_COLORS: Record<FurnitureCategory, { fill: string; stroke: string; label: string }> = {
@@ -620,24 +621,28 @@ export function FloorPlanEditor() {
       const isSelected = door.id === selectedId
       const openStart = planToScreen(pointOnWall(wall, door.offset - door.width / 2), offset, scale)
       const openEnd = planToScreen(pointOnWall(wall, door.offset + door.width / 2), offset, scale)
-      const { hinge, leafEnd } = doorSwingGeometry(wall, door)
-      const hingeScreen = planToScreen(hinge, offset, scale)
-      const leafScreen = planToScreen(leafEnd, offset, scale)
+      const swings = doorSwingGeometries(wall, door)
 
-      ctx.strokeStyle = isSelected ? '#1d4ed8' : '#64748b'
-      ctx.lineWidth = isSelected ? 2.5 : 1.5
-      ctx.beginPath()
-      ctx.moveTo(hingeScreen.x, hingeScreen.y)
-      ctx.lineTo(leafScreen.x, leafScreen.y)
-      ctx.stroke()
+      for (const swing of swings) {
+        const hingeScreen = planToScreen(swing.hinge, offset, scale)
+        const leafScreen = planToScreen(swing.leafEnd, offset, scale)
 
-      const arcRadius = Math.hypot(leafScreen.x - hingeScreen.x, leafScreen.y - hingeScreen.y)
-      if (arcRadius > 2) {
-        const wallAngleScreen = Math.atan2(openEnd.y - hingeScreen.y, openEnd.x - hingeScreen.x)
-        const leafAngle = Math.atan2(leafScreen.y - hingeScreen.y, leafScreen.x - hingeScreen.x)
+        ctx.strokeStyle = isSelected ? '#1d4ed8' : '#64748b'
+        ctx.lineWidth = isSelected ? 2.5 : 1.5
         ctx.beginPath()
-        ctx.arc(hingeScreen.x, hingeScreen.y, arcRadius, leafAngle, wallAngleScreen, true)
+        ctx.moveTo(hingeScreen.x, hingeScreen.y)
+        ctx.lineTo(leafScreen.x, leafScreen.y)
         ctx.stroke()
+
+        const arcRadius = Math.hypot(leafScreen.x - hingeScreen.x, leafScreen.y - hingeScreen.y)
+        if (arcRadius > 2) {
+          let sweep = swing.arcEnd - swing.arcStart
+          while (sweep > Math.PI) sweep -= 2 * Math.PI
+          while (sweep < -Math.PI) sweep += 2 * Math.PI
+          ctx.beginPath()
+          ctx.arc(hingeScreen.x, hingeScreen.y, arcRadius, swing.arcStart, swing.arcEnd, sweep < 0)
+          ctx.stroke()
+        }
       }
 
       ctx.strokeStyle = isSelected ? '#2563eb' : '#94a3b8'
@@ -713,10 +718,10 @@ export function FloorPlanEditor() {
       ctx.setLineDash([])
     }
 
-    if (tool === 'door' && cursorPlan) {
+    if ((tool === 'door' || tool === 'double-door') && cursorPlan) {
       const nearest = findNearestWall(planWalls, cursorPlan)
       if (nearest) {
-        const previewWidth = 3
+        const previewWidth = tool === 'double-door' ? DEFAULT_DOUBLE_DOOR_WIDTH : DEFAULT_DOOR_WIDTH
         const openStart = planToScreen(
           pointOnWall(nearest.wall, nearest.offset - previewWidth / 2),
           offset,
@@ -909,7 +914,12 @@ export function FloorPlanEditor() {
     }
 
     if (tool === 'door') {
-      addDoor(point)
+      addDoor(point, 'single')
+      return
+    }
+
+    if (tool === 'double-door') {
+      addDoor(point, 'double')
       return
     }
 
