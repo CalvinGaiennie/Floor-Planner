@@ -2,7 +2,15 @@ import { useFloorPlan } from '../context/FloorPlanContext'
 import { rotationDegrees } from '../utils/geometry'
 import { formatFeetInches } from '../utils/imperial'
 import { doorStyleLabel, doorSwingLabel } from '../utils/doors'
-import { getWall, isPlanWallId, resolveWall, roomBoundingSize } from '../utils/planModel'
+import {
+  getRoom,
+  getSharedWallRoomIds,
+  getWall,
+  isPlanWallId,
+  isSharedRoomWall,
+  resolveWall,
+  roomBoundingSize,
+} from '../utils/planModel'
 import { wallLength } from '../utils/geometry'
 
 function RotateButtons({
@@ -47,18 +55,32 @@ export function RoomBottomBar() {
     rotateSelected,
   } = useFloorPlan()
 
-  const selectedWall =
-    state.selectedId && isPlanWallId(state.plan, state.selectedId)
-      ? resolveWall(state.plan, getWall(state.plan, state.selectedId)!)
-      : null
+  const selectedWallId =
+    state.selectedId && isPlanWallId(state.plan, state.selectedId) ? state.selectedId : null
+  const selectedWall = selectedWallId
+    ? resolveWall(state.plan, getWall(state.plan, selectedWallId)!)
+    : null
+  const isSharedWall = selectedWallId ? isSharedRoomWall(state.plan, selectedWallId) : false
+  const sharedRoomNames = selectedWallId
+    ? getSharedWallRoomIds(state.plan, selectedWallId)
+        .map((id) => getRoom(state.plan, id)?.name ?? 'Room')
+        .join(' · ')
+    : ''
 
   if (selectedWall) {
     return (
       <footer className="room-bottom-bar">
         <label className="bar-field-compact bar-field-readonly">
           <span>Type</span>
-          <input type="text" readOnly value="Wall" />
+          <input type="text" readOnly value={isSharedWall ? 'Shared wall' : 'Wall'} />
         </label>
+
+        {isSharedWall && (
+          <label className="bar-field-compact bar-field-readonly">
+            <span>Rooms</span>
+            <input type="text" readOnly value={sharedRoomNames} />
+          </label>
+        )}
 
         <label className="bar-field-compact bar-field-readonly">
           <span>Length</span>
@@ -66,8 +88,17 @@ export function RoomBottomBar() {
         </label>
 
         <div className="room-bottom-bar-actions">
-          <button type="button" className="danger" onClick={deleteSelected}>
-            Delete
+          <button
+            type="button"
+            className="danger"
+            onClick={deleteSelected}
+            title={
+              isSharedWall
+                ? `Remove the shared wall between ${sharedRoomNames.replace(/ · /g, ' and ')}`
+                : 'Remove this wall'
+            }
+          >
+            {isSharedWall ? 'Disconnect rooms' : 'Delete wall'}
           </button>
         </div>
       </footer>

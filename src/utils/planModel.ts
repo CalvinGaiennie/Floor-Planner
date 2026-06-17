@@ -13,7 +13,7 @@ import {
   type Vertex,
   type Wall,
 } from '../types/floorPlan'
-import { wallsShareSegment } from './geometry'
+import { wallsShareSegment, findCoincidentWallIds } from './geometry'
 import { snapToGrid } from './imperial'
 
 function snapPoint(point: Point2D): Point2D {
@@ -465,6 +465,25 @@ export function deleteWall(plan: FloorPlan, wallId: string): FloorPlan {
     },
     [...orphanVertices],
   )
+}
+
+export function getSharedWallRoomIds(plan: FloorPlan, wallId: string): string[] {
+  const resolved = resolveWalls(plan)
+  const ids = findCoincidentWallIds(resolved, wallId)
+  const roomIds = new Set<string>()
+  for (const id of ids) {
+    const wall = getWall(plan, id)
+    if (wall) roomIds.add(wall.roomId)
+  }
+  return [...roomIds]
+}
+
+export function isSharedRoomWall(plan: FloorPlan, wallId: string): boolean {
+  return getSharedWallRoomIds(plan, wallId).length >= 2
+}
+
+export function disconnectRoomsAtWall(plan: FloorPlan, wallId: string): FloorPlan {
+  return deleteWall(plan, wallId)
 }
 
 export function duplicateRoom(plan: FloorPlan, roomId: string): FloorPlan {

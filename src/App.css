@@ -1352,6 +1352,27 @@ body.project-notes-resizing {
   cursor: crosshair;
 }
 
+.shared-wall-disconnect-btn {
+  position: absolute;
+  z-index: 12;
+  transform: translate(-50%, -100%);
+  padding: 4px 10px;
+  border: 1px solid #dc2626;
+  border-radius: 6px;
+  background: #fff;
+  color: #b91c1c;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.15);
+  pointer-events: auto;
+}
+
+.shared-wall-disconnect-btn:hover {
+  background: #fef2f2;
+}
+
 .plan-status {
   flex-shrink: 0;
   display: flex;

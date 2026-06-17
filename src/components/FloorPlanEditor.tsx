@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RoomListPanel } from './RoomListPanel'
 import { WorkspaceAlerts } from './WorkspaceAlerts'
 import { useFloorPlan } from '../context/FloorPlanContext'
@@ -16,8 +16,11 @@ import { pointOnWall, wallLength, findWallAtPoint, findCoincidentWallIds } from 
 import {
   createWallDragAnchor,
   findVertexNear,
+  getRoom,
+  getSharedWallRoomIds,
   getVertex,
   isPlanWallId,
+  isSharedRoomWall,
   isPointInsideRoom,
   isVertexId,
   roomBoundingSize,
@@ -126,6 +129,32 @@ export function FloorPlanEditor() {
   } = useFloorPlan()
 
   const { plan, tool, selectedId } = state
+
+  const sharedWallDisconnect = useMemo(() => {
+    if (!selectedId || !offset || !isPlanWallId(plan, selectedId)) return null
+    if (!isSharedRoomWall(plan, selectedId)) return null
+
+    const coincidentIds = findCoincidentWallIds(planWalls, selectedId)
+    const wall =
+      planWalls.find((w) => w.id === selectedId) ??
+      planWalls.find((w) => coincidentIds.includes(w.id))
+    if (!wall) return null
+
+    const roomNames = getSharedWallRoomIds(plan, selectedId)
+      .map((id) => getRoom(plan, id)?.name ?? 'Room')
+    const mid = planToScreen(
+      { x: (wall.start.x + wall.end.x) / 2, y: (wall.start.y + wall.end.y) / 2 },
+      offset,
+      scale,
+    )
+
+    return {
+      x: mid.x,
+      y: mid.y - 14,
+      title: `Disconnect ${roomNames.join(' and ')}`,
+    }
+  }, [selectedId, offset, scale, plan, planWalls])
+
   const placementEntry = placementCatalogId
     ? furnitureCatalog.find((e) => e.id === placementCatalogId)
     : null
@@ -1099,6 +1128,21 @@ export function FloorPlanEditor() {
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
         />
+        {sharedWallDisconnect && (
+          <button
+            type="button"
+            className="shared-wall-disconnect-btn"
+            style={{ left: sharedWallDisconnect.x, top: sharedWallDisconnect.y }}
+            title={sharedWallDisconnect.title}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation()
+              deleteSelected()
+            }}
+          >
+            Disconnect
+          </button>
+        )}
         <div className="plan-status plan-status-overlay">
           {cursorPlan && (
             <span>
