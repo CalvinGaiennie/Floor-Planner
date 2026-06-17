@@ -85,6 +85,19 @@ export async function setActivePlanIdInFirestore(userId: string, planId: string)
   await setDoc(settingsRef(userId), { activePlanId: planId }, { merge: true })
 }
 
+export async function loadMasterNoteFromFirestore(userId: string): Promise<string> {
+  if (!isFirebaseConfigured() || !db) return ''
+
+  const snap = await getDoc(settingsRef(userId))
+  const note = snap.data()?.masterNote
+  return typeof note === 'string' ? note : ''
+}
+
+export async function saveMasterNoteToFirestore(userId: string, masterNote: string): Promise<void> {
+  if (!isFirebaseConfigured() || !db) return
+  await setDoc(settingsRef(userId), { masterNote }, { merge: true })
+}
+
 export async function loadPlanFromFirestore(
   userId: string,
   planId: string,

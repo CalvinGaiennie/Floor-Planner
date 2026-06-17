@@ -3,12 +3,14 @@ import { useFloorPlan } from '../context/FloorPlanContext'
 
 const NOTES_OPEN_KEY = 'floor-planner-notes-open'
 const NOTES_WIDTH_KEY = 'floor-planner-notes-width'
+const NOTES_TAB_KEY = 'floor-planner-notes-tab'
 const DEFAULT_WIDTH = 280
 const MIN_WIDTH = 200
 const COLLAPSE_WIDTH = 120
 const MAX_WIDTH_RATIO = 0.55
 const DRAG_CLICK_THRESHOLD = 4
 
+type NotesTab = 'project' | 'masternote'
 type DragState =
   | { mode: 'open'; startX: number }
   | { mode: 'resize'; startX: number; startWidth: number }
@@ -26,6 +28,11 @@ function readStoredWidth() {
   const parsed = stored ? Number(stored) : DEFAULT_WIDTH
   if (!Number.isFinite(parsed)) return DEFAULT_WIDTH
   return clampWidth(parsed)
+}
+
+function readStoredTab(): NotesTab {
+  const stored = localStorage.getItem(NOTES_TAB_KEY)
+  return stored === 'masternote' ? 'masternote' : 'project'
 }
 
 function NotesIcon() {
@@ -51,9 +58,10 @@ function NotesIcon() {
 }
 
 export function ProjectNotesPanel() {
-  const { state, setPlanNotes } = useFloorPlan()
+  const { state, setPlanNotes, masterNote, setMasterNote } = useFloorPlan()
   const [open, setOpen] = useState(() => localStorage.getItem(NOTES_OPEN_KEY) === '1')
   const [width, setWidth] = useState(readStoredWidth)
+  const [tab, setTab] = useState<NotesTab>(readStoredTab)
   const [resizing, setResizing] = useState(false)
   const [collapseHint, setCollapseHint] = useState(false)
   const [fabDragging, setFabDragging] = useState(false)
@@ -69,6 +77,10 @@ export function ProjectNotesPanel() {
       localStorage.setItem(NOTES_WIDTH_KEY, String(width))
     }
   }, [width])
+
+  useEffect(() => {
+    localStorage.setItem(NOTES_TAB_KEY, tab)
+  }, [tab])
 
   useEffect(() => {
     const onResize = () => setWidth((w) => clampWidth(w))
@@ -165,14 +177,15 @@ export function ProjectNotesPanel() {
   )
 
   const showPanel = open || resizing
+  const isMasterTab = tab === 'masternote'
 
   return (
     <div className="project-notes-root">
       <button
         type="button"
         className={`project-notes-fab${open && !fabDragging ? ' hidden' : ''}${fabDragging ? ' dragging' : ''}`}
-        aria-label="Open project notes"
-        title="Project notes — click or drag left to open"
+        aria-label="Open notes"
+        title="Notes — click or drag left to open"
         onPointerDown={onFabPointerDown}
         onPointerMove={onDragPointerMove}
         onPointerUp={onDragPointerUp}
@@ -185,7 +198,7 @@ export function ProjectNotesPanel() {
         <aside
           className={`project-notes-panel${resizing ? ' resizing' : ''}${collapseHint ? ' collapse-hint' : ''}`}
           style={{ width }}
-          aria-label="Project notes"
+          aria-label="Notes"
         >
           <div
             className="project-notes-resize-handle"
@@ -198,24 +211,53 @@ export function ProjectNotesPanel() {
             onPointerCancel={onDragPointerUp}
           />
           <header className="project-notes-header">
-            <h2>Project notes</h2>
+            <div className="project-notes-tabs" role="tablist" aria-label="Notes pages">
+              <button
+                type="button"
+                role="tab"
+                className={`project-notes-tab${!isMasterTab ? ' active' : ''}`}
+                aria-selected={!isMasterTab}
+                onClick={() => setTab('project')}
+              >
+                Project
+              </button>
+              <button
+                type="button"
+                role="tab"
+                className={`project-notes-tab${isMasterTab ? ' active' : ''}`}
+                aria-selected={isMasterTab}
+                onClick={() => setTab('masternote')}
+              >
+                Master note
+              </button>
+            </div>
             <button
               type="button"
               className="project-notes-collapse"
               onClick={() => setOpen(false)}
-              aria-label="Collapse project notes"
+              aria-label="Collapse notes"
               title="Collapse"
             >
               ›
             </button>
           </header>
-          <textarea
-            className="project-notes-input"
-            value={state.plan.notes}
-            onChange={(e) => setPlanNotes(e.target.value)}
-            placeholder="Dimensions, materials, client requests…"
-            aria-label="Project notes"
-          />
+          {isMasterTab ? (
+            <textarea
+              className="project-notes-input"
+              value={masterNote}
+              onChange={(e) => setMasterNote(e.target.value)}
+              placeholder="Notes that apply to every project…"
+              aria-label="Master note"
+            />
+          ) : (
+            <textarea
+              className="project-notes-input"
+              value={state.plan.notes}
+              onChange={(e) => setPlanNotes(e.target.value)}
+              placeholder="Dimensions, materials, client requests…"
+              aria-label="Project notes"
+            />
+          )}
         </aside>
       )}
     </div>

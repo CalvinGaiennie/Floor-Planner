@@ -43,9 +43,11 @@ import {
   createLocalPlan,
   deleteLocalPlan,
   loadLocalPlansSession,
+  loadMasterNoteLocal,
   mirrorPlanLocally,
   nextDefaultPlanName,
   saveActivePlanIdLocal,
+  saveMasterNoteLocal,
   savePlan,
   savePlanForId,
   loadPlanForId,
@@ -58,7 +60,9 @@ import {
   createPlanInFirestore,
   deletePlanFromFirestore,
   loadPlanFromFirestore,
+  loadMasterNoteFromFirestore,
   loadUserPlansSession,
+  saveMasterNoteToFirestore,
   savePlanToFirestore,
   setActivePlanIdInFirestore,
 } from '../services/firestorePlans'
@@ -257,6 +261,8 @@ interface FloorPlanContextValue {
   setPlan: (plan: FloorPlan) => void
   setPlanName: (name: string) => void
   setPlanNotes: (notes: string) => void
+  masterNote: string
+  setMasterNote: (note: string) => void
   addRoom: (point: { x: number; y: number }) => void
   updateRoom: (id: string, patch: RoomPatch) => void
   deleteSelected: () => void
@@ -283,6 +289,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   const [planReady, setPlanReady] = useState(false)
   const [planSummaries, setPlanSummaries] = useState<PlanSummary[]>([])
   const [activePlanId, setActivePlanId] = useState<string | null>(null)
+  const [masterNote, setMasterNoteState] = useState(() => loadMasterNoteLocal())
   const [state, dispatch] = useReducer(reducer, {
     plan: createEmptyPlan(),
     tool: 'select',
@@ -297,6 +304,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   const activePlanIdRef = useRef<string | null>(null)
   activePlanIdRef.current = activePlanId
   const cloudSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const masterNoteCloudSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const skipNextCloudSaveRef = useRef(false)
   const skipPlanPersistenceRef = useRef(false)
   const planSummariesRef = useRef(planSummaries)
@@ -316,6 +324,50 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     undoStackRef.current = []
     redoStackRef.current = []
   }, [])
+
+  const setMasterNote = useCallback(
+    (note: string) => {
+      setMasterNoteState(note)
+      saveMasterNoteLocal(note)
+      if (!user || !isFirebaseConfigured()) return
+
+      if (masterNoteCloudSaveTimerRef.current) {
+        clearTimeout(masterNoteCloudSaveTimerRef.current)
+      }
+      masterNoteCloudSaveTimerRef.current = setTimeout(() => {
+        saveMasterNoteToFirestore(user.uid, note).catch(() => {})
+      }, 1500)
+    },
+    [user],
+  )
+
+  useEffect(() => {
+    if (!authReady) return
+
+    let cancelled = false
+
+    async function loadMasterNote() {
+      const localNote = loadMasterNoteLocal()
+      if (!cancelled) setMasterNoteState(localNote)
+
+      if (!user || !isFirebaseConfigured()) return
+
+      try {
+        const cloudNote = await loadMasterNoteFromFirestore(user.uid)
+        if (!cancelled) {
+          setMasterNoteState(cloudNote)
+          saveMasterNoteLocal(cloudNote)
+        }
+      } catch {
+        // Keep local copy.
+      }
+    }
+
+    loadMasterNote()
+    return () => {
+      cancelled = true
+    }
+  }, [user, authReady])
 
   useEffect(() => {
     if (!authReady) return
@@ -420,6 +472,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     return () => {
       if (cloudSaveTimerRef.current) clearTimeout(cloudSaveTimerRef.current)
+      if (masterNoteCloudSaveTimerRef.current) clearTimeout(masterNoteCloudSaveTimerRef.current)
     }
   }, [])
 
@@ -601,6 +654,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       setPlan: (plan) => dispatchAction({ type: 'SET_PLAN', plan }),
       setPlanName: (name) => dispatchAction({ type: 'SET_PLAN_NAME', name }),
       setPlanNotes: (notes) => dispatchAction({ type: 'SET_PLAN_NOTES', notes }),
+      masterNote,
+      setMasterNote,
       addRoom: (point) => dispatchAction({ type: 'ADD_ROOM', point }),
       updateRoom: (id, patch) => dispatchAction({ type: 'UPDATE_ROOM', id, patch }),
       deleteSelected: () => dispatchAction({ type: 'DELETE_SELECTED' }),
@@ -625,6 +680,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       state,
       planSummaries,
       activePlanId,
+      masterNote,
       planWalls,
       selectedRoom,
       recordUndoSnapshot,
@@ -634,6 +690,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       switchPlan,
       deleteCurrentPlan,
       dispatchAction,
+      setMasterNote,
     ],
   )
 

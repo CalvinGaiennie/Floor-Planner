@@ -126,6 +126,19 @@ function normalizePlan(raw: LegacyPlan): FloorPlan {
 
 const ACTIVE_PLAN_ID_KEY = 'floor-planner-active-plan-id'
 const PLANS_INDEX_KEY = 'floor-planner-plans-index'
+const MASTER_NOTE_KEY = 'floor-planner-master-note'
+
+export function loadMasterNoteLocal(): string {
+  try {
+    return localStorage.getItem(MASTER_NOTE_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+export function saveMasterNoteLocal(note: string): void {
+  localStorage.setItem(MASTER_NOTE_KEY, note)
+}
 
 export interface PlanSummary {
   id: string
