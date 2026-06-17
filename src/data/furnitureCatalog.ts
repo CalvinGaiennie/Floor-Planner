@@ -30,6 +30,20 @@ export const DEFAULT_FURNITURE_CATALOG: FurnitureCatalogEntry[] = [
   { id: 'toilet-standard', label: 'Standard toilet', category: 'toilet', width: 2, depth: 2.5, height: 2.5, keywords: ['toilet', 'bathroom', 'wc'] },
   { id: 'toilet-compact', label: 'Compact toilet', category: 'toilet', width: 1.5, depth: 2.25, height: 2.25, keywords: ['toilet', 'compact', 'bathroom', 'small'] },
   { id: 'toilet-elongated', label: 'Elongated toilet', category: 'toilet', width: 2, depth: 2.75, height: 2.5, keywords: ['toilet', 'elongated', 'bathroom', 'ada'] },
+  // Showers
+  { id: 'shower-standard', label: '3×3 shower', category: 'shower', width: 3, depth: 3, height: 7, keywords: ['shower', 'stall', 'bathroom', '3x3'] },
+  { id: 'shower-alcove', label: '3×4 shower', category: 'shower', width: 3, depth: 4, height: 7, keywords: ['shower', 'alcove', 'bathroom', '3x4'] },
+  { id: 'shower-walk-in', label: '4×4 walk-in shower', category: 'shower', width: 4, depth: 4, height: 7, keywords: ['shower', 'walk in', 'bathroom', '4x4'] },
+  // Bathtubs
+  { id: 'bathtub-standard', label: 'Standard tub (5×2.5)', category: 'bathtub', width: 5, depth: 2.5, height: 2, keywords: ['bathtub', 'tub', 'alcove', 'bathroom', '60'] },
+  { id: 'bathtub-large', label: 'Large tub (6×3)', category: 'bathtub', width: 6, depth: 3, height: 2.5, keywords: ['bathtub', 'tub', 'soaking', 'bathroom', '72'] },
+  { id: 'bathtub-corner', label: 'Corner tub (5×5)', category: 'bathtub', width: 5, depth: 5, height: 2.5, keywords: ['bathtub', 'tub', 'corner', 'bathroom'] },
+  // Counters (24″ cabinet depth)
+  { id: 'counter-base-2', label: '2′ base cabinet', category: 'counter', width: 2, depth: 2, height: 3, keywords: ['counter', 'cabinet', 'base', 'kitchen', '2'] },
+  { id: 'counter-base-3', label: '3′ base cabinet', category: 'counter', width: 3, depth: 2, height: 3, keywords: ['counter', 'cabinet', 'base', 'kitchen', '3'] },
+  { id: 'counter-base-4', label: '4′ base cabinet', category: 'counter', width: 4, depth: 2, height: 3, keywords: ['counter', 'cabinet', 'base', 'kitchen', '4'] },
+  { id: 'counter-vanity', label: '5′ vanity', category: 'counter', width: 5, depth: 2, height: 3, keywords: ['counter', 'vanity', 'bathroom', '5'] },
+  { id: 'counter-kitchen-6', label: '6′ counter run', category: 'counter', width: 6, depth: 2, height: 3, keywords: ['counter', 'kitchen', 'run', '6'] },
   // Fridges
   { id: 'fridge-standard', label: 'Standard fridge', category: 'fridge', width: 3, depth: 2.5, height: 6.5, keywords: ['fridge', 'refrigerator', 'kitchen'] },
   { id: 'fridge-counter-depth', label: 'Counter-depth fridge', category: 'fridge', width: 3, depth: 2, height: 6.5, keywords: ['fridge', 'counter depth', 'refrigerator'] },
@@ -89,6 +103,9 @@ export const FURNITURE_CATEGORY_LABELS: Record<FurnitureCatalogEntry['category']
   armchair: 'Armchairs',
   sink: 'Sinks',
   toilet: 'Toilets',
+  shower: 'Showers',
+  bathtub: 'Bathtubs',
+  counter: 'Counters',
   fridge: 'Fridges',
   stove: 'Stoves',
   island: 'Islands',
