@@ -13,7 +13,7 @@ import {
   type Vertex,
   type Wall,
 } from '../types/floorPlan'
-import { wallsShareSegment, findCoincidentWallIds } from './geometry'
+import { wallsShareSegment, findCoincidentWallIds, distance } from './geometry'
 import { snapToGrid } from './imperial'
 
 function snapPoint(point: Point2D): Point2D {
@@ -553,7 +553,7 @@ export function getSharedWallsForRoom(
 
   const results: { wallId: string; otherRoomIds: string[] }[] = []
   for (const wallId of room.wallIds) {
-    if (!isSharedRoomWall(plan, wallId)) continue
+    if (!isRoomsConnectedAtWall(plan, wallId)) continue
     const otherRoomIds = getSharedWallRoomIds(plan, wallId).filter((id) => id !== roomId)
     if (otherRoomIds.length > 0) {
       results.push({ wallId, otherRoomIds })
@@ -604,6 +604,163 @@ export function disconnectVertexForRoom(
       return wall
     }),
   }
+}
+
+function mergeVertices(plan: FloorPlan, fromId: string, intoId: string): FloorPlan {
+  if (fromId === intoId) return plan
+  const from = getVertex(plan, fromId)
+  const into = getVertex(plan, intoId)
+  if (!from || !into) return plan
+  if (Math.hypot(from.x - into.x, from.y - into.y) >= VERTEX_SNAP_DISTANCE) return plan
+
+  return {
+    ...plan,
+    walls: plan.walls.map((wall) => ({
+      ...wall,
+      startVertexId: wall.startVertexId === fromId ? intoId : wall.startVertexId,
+      endVertexId: wall.endVertexId === fromId ? intoId : wall.endVertexId,
+    })),
+    vertices: plan.vertices.filter((v) => v.id !== fromId),
+  }
+}
+
+function roomIdsOnCoincidentWallSegment(plan: FloorPlan, wallId: string): string[] {
+  const ids = findCoincidentWallIds(resolveWalls(plan), wallId)
+  const roomIds = new Set<string>()
+  for (const id of ids) {
+    const wall = getWall(plan, id)
+    if (wall) roomIds.add(wall.roomId)
+  }
+  return [...roomIds]
+}
+
+export function isRoomsConnectedAtWall(plan: FloorPlan, wallId: string): boolean {
+  const wall = getWall(plan, wallId)
+  if (!wall) return false
+  if (!isSharedRoomWall(plan, wallId)) return false
+
+  const ids = findCoincidentWallIds(resolveWalls(plan), wallId)
+  for (const id of ids) {
+    const other = getWall(plan, id)
+    if (!other || other.roomId === wall.roomId) continue
+    const sameDir =
+      other.startVertexId === wall.startVertexId && other.endVertexId === wall.endVertexId
+    const reverseDir =
+      other.startVertexId === wall.endVertexId && other.endVertexId === wall.startVertexId
+    if (sameDir || reverseDir) return true
+  }
+  return false
+}
+
+export function canConnectRoomsAtWall(plan: FloorPlan, wallId: string): boolean {
+  const wall = getWall(plan, wallId)
+  if (!wall) return false
+
+  const roomIds = roomIdsOnCoincidentWallSegment(plan, wallId)
+  if (roomIds.length < 2) return false
+
+  const ids = findCoincidentWallIds(resolveWalls(plan), wallId)
+  for (const id of ids) {
+    const other = getWall(plan, id)
+    if (!other || other.roomId === wall.roomId) continue
+    if (
+      other.startVertexId !== wall.startVertexId ||
+      other.endVertexId !== wall.endVertexId ||
+      other.startVertexId !== wall.endVertexId ||
+      other.endVertexId !== wall.startVertexId
+    ) {
+      const anchorResolved = resolveWall(plan, wall)
+      const otherResolved = resolveWall(plan, other)
+      if (!anchorResolved || !otherResolved) continue
+      const aligned =
+        (distance(otherResolved.start, anchorResolved.start) < VERTEX_SNAP_DISTANCE &&
+          distance(otherResolved.end, anchorResolved.end) < VERTEX_SNAP_DISTANCE) ||
+        (distance(otherResolved.start, anchorResolved.end) < VERTEX_SNAP_DISTANCE &&
+          distance(otherResolved.end, anchorResolved.start) < VERTEX_SNAP_DISTANCE)
+      if (aligned) return true
+    }
+  }
+  return false
+}
+
+export function connectRoomsAtWall(plan: FloorPlan, wallId: string): FloorPlan {
+  const wall = getWall(plan, wallId)
+  if (!wall || !canConnectRoomsAtWall(plan, wallId)) return plan
+
+  const anchorResolved = resolveWall(plan, wall)!
+  const ids = findCoincidentWallIds(resolveWalls(plan), wallId)
+  let planState = plan
+
+  for (const id of ids) {
+    const partner = getWall(planState, id)
+    if (!partner || partner.roomId === wall.roomId) continue
+
+    const partnerResolved = resolveWall(planState, partner)
+    if (!partnerResolved) continue
+
+    const sameDir =
+      distance(partnerResolved.start, anchorResolved.start) < VERTEX_SNAP_DISTANCE &&
+      distance(partnerResolved.end, anchorResolved.end) < VERTEX_SNAP_DISTANCE
+    const reverseDir =
+      distance(partnerResolved.start, anchorResolved.end) < VERTEX_SNAP_DISTANCE &&
+      distance(partnerResolved.end, anchorResolved.start) < VERTEX_SNAP_DISTANCE
+    if (!sameDir && !reverseDir) continue
+
+    const anchorStartId = wall.startVertexId
+    const anchorEndId = wall.endVertexId
+
+    if (sameDir) {
+      planState = mergeVertices(planState, partner.startVertexId, anchorStartId)
+      planState = mergeVertices(planState, partner.endVertexId, anchorEndId)
+    } else {
+      planState = mergeVertices(planState, partner.startVertexId, anchorEndId)
+      planState = mergeVertices(planState, partner.endVertexId, anchorStartId)
+    }
+  }
+
+  return sanitizePlan(planState)
+}
+
+export function canConnectVertex(plan: FloorPlan, vertexId: string): boolean {
+  const vertex = getVertex(plan, vertexId)
+  if (!vertex) return false
+  return plan.vertices.some(
+    (other) =>
+      other.id !== vertexId &&
+      Math.hypot(other.x - vertex.x, other.y - vertex.y) < VERTEX_SNAP_DISTANCE,
+  )
+}
+
+export function connectVertexCorner(plan: FloorPlan, vertexId: string): FloorPlan {
+  const vertex = getVertex(plan, vertexId)
+  if (!vertex || !canConnectVertex(plan, vertexId)) return plan
+
+  let planState = plan
+  for (const other of plan.vertices) {
+    if (other.id === vertexId) continue
+    if (Math.hypot(other.x - vertex.x, other.y - vertex.y) < VERTEX_SNAP_DISTANCE) {
+      planState = mergeVertices(planState, other.id, vertexId)
+    }
+  }
+  return sanitizePlan(planState)
+}
+
+export function getConnectableWallsForRoom(
+  plan: FloorPlan,
+  roomId: string,
+): { wallId: string; otherRoomIds: string[] }[] {
+  const room = getRoom(plan, roomId)
+  if (!room) return []
+
+  const results: { wallId: string; otherRoomIds: string[] }[] = []
+  for (const wallId of room.wallIds) {
+    if (!canConnectRoomsAtWall(plan, wallId)) continue
+    const otherRoomIds = roomIdsOnCoincidentWallSegment(plan, wallId).filter((id) => id !== roomId)
+    if (otherRoomIds.length > 0) {
+      results.push({ wallId, otherRoomIds })
+    }
+  }
+  return results
 }
 
 export function duplicateRoom(plan: FloorPlan, roomId: string): FloorPlan {

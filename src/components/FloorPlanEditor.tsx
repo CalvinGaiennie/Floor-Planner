@@ -20,7 +20,8 @@ import {
   getSharedWallRoomIds,
   getVertex,
   isPlanWallId,
-  isSharedRoomWall,
+  canConnectRoomsAtWall,
+  isRoomsConnectedAtWall,
   isPointInsideRoom,
   isVertexId,
   roomBoundingSize,
@@ -115,6 +116,7 @@ export function FloorPlanEditor() {
     addWall,
     deleteSelected,
     disconnectSharedWall,
+    connectSharedWall,
     recordUndoSnapshot,
     finishGeometryEdit,
     selectedRoom,
@@ -131,9 +133,12 @@ export function FloorPlanEditor() {
 
   const { plan, tool, selectedId } = state
 
-  const sharedWallDisconnect = useMemo(() => {
+  const sharedWallActions = useMemo(() => {
     if (!selectedId || !offset || !isPlanWallId(plan, selectedId)) return null
-    if (!isSharedRoomWall(plan, selectedId)) return null
+
+    const canConnect = canConnectRoomsAtWall(plan, selectedId)
+    const canDisconnect = isRoomsConnectedAtWall(plan, selectedId)
+    if (!canConnect && !canDisconnect) return null
 
     const coincidentIds = findCoincidentWallIds(planWalls, selectedId)
     const wall =
@@ -152,7 +157,9 @@ export function FloorPlanEditor() {
     return {
       x: mid.x,
       y: mid.y - 14,
-      title: `Disconnect ${roomNames.join(' and ')}`,
+      canConnect,
+      canDisconnect,
+      roomNames,
     }
   }, [selectedId, offset, scale, plan, planWalls])
 
@@ -1143,20 +1150,40 @@ export function FloorPlanEditor() {
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
         />
-        {sharedWallDisconnect && (
-          <button
-            type="button"
-            className="shared-wall-disconnect-btn"
-            style={{ left: sharedWallDisconnect.x, top: sharedWallDisconnect.y }}
-            title={sharedWallDisconnect.title}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation()
-              if (selectedId) disconnectSharedWall(selectedId)
-            }}
+        {sharedWallActions && (
+          <div
+            className="shared-wall-action-group"
+            style={{ left: sharedWallActions.x, top: sharedWallActions.y }}
           >
-            Disconnect
-          </button>
+            {sharedWallActions.canConnect && (
+              <button
+                type="button"
+                className="shared-wall-connect-btn"
+                title={`Connect ${sharedWallActions.roomNames.join(' and ')}`}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (selectedId) connectSharedWall(selectedId)
+                }}
+              >
+                Connect
+              </button>
+            )}
+            {sharedWallActions.canDisconnect && (
+              <button
+                type="button"
+                className="shared-wall-disconnect-btn"
+                title={`Disconnect ${sharedWallActions.roomNames.join(' and ')}`}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (selectedId) disconnectSharedWall(selectedId)
+                }}
+              >
+                Disconnect
+              </button>
+            )}
+          </div>
         )}
         <div className="plan-status plan-status-overlay">
           {cursorPlan && (

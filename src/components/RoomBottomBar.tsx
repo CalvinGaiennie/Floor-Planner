@@ -3,13 +3,16 @@ import { rotationDegrees, wallLength } from '../utils/geometry'
 import { formatFeetInches } from '../utils/imperial'
 import { doorStyleLabel, doorSwingLabel } from '../utils/doors'
 import {
+  canConnectRoomsAtWall,
+  canConnectVertex,
+  getConnectableWallsForRoom,
   getRoom,
   getRoomsAtVertex,
   getSharedWallRoomIds,
   getSharedWallsForRoom,
   getWall,
   isPlanWallId,
-  isSharedRoomWall,
+  isRoomsConnectedAtWall,
   isSharedVertex,
   isVertexId,
   resolveWall,
@@ -58,6 +61,8 @@ export function RoomBottomBar() {
     duplicateFurniture,
     rotateSelected,
     disconnectSharedWall,
+    connectSharedWall,
+    connectCorner,
     disconnectWallFromCorner,
     disconnectCornerFromRoom,
   } = useFloorPlan()
@@ -67,7 +72,8 @@ export function RoomBottomBar() {
   const selectedWall = selectedWallId
     ? resolveWall(state.plan, getWall(state.plan, selectedWallId)!)
     : null
-  const isSharedWall = selectedWallId ? isSharedRoomWall(state.plan, selectedWallId) : false
+  const isConnectedWall = selectedWallId ? isRoomsConnectedAtWall(state.plan, selectedWallId) : false
+  const canConnectWall = selectedWallId ? canConnectRoomsAtWall(state.plan, selectedWallId) : false
   const sharedRoomNames = selectedWallId
     ? getSharedWallRoomIds(state.plan, selectedWallId)
         .map((id) => getRoom(state.plan, id)?.name ?? 'Room')
@@ -82,10 +88,14 @@ export function RoomBottomBar() {
       <footer className="room-bottom-bar">
         <label className="bar-field-compact bar-field-readonly">
           <span>Type</span>
-          <input type="text" readOnly value={isSharedWall ? 'Shared wall' : 'Wall'} />
+          <input
+            type="text"
+            readOnly
+            value={isConnectedWall ? 'Shared wall' : canConnectWall ? 'Aligned wall' : 'Wall'}
+          />
         </label>
 
-        {isSharedWall && (
+        {(isConnectedWall || canConnectWall) && (
           <label className="bar-field-compact bar-field-readonly">
             <span>Rooms</span>
             <input type="text" readOnly value={sharedRoomNames} />
@@ -98,22 +108,28 @@ export function RoomBottomBar() {
         </label>
 
         <div className="room-bottom-bar-actions">
-          {isSharedWall ? (
+          {canConnectWall && (
+            <button
+              type="button"
+              className="connect"
+              onClick={() => connectSharedWall(selectedWallId!)}
+              title="Merge corners so rooms move together along this wall"
+            >
+              Connect rooms
+            </button>
+          )}
+          {isConnectedWall && (
             <button
               type="button"
               className="danger"
               onClick={() => disconnectSharedWall(selectedWallId!)}
-              title={`Separate rooms along this wall — walls stay, drag a room to move it away`}
+              title="Separate rooms along this wall — walls stay, drag a room to move it away"
             >
               Disconnect rooms
             </button>
-          ) : (
-            <button
-              type="button"
-              className="danger"
-              onClick={deleteSelected}
-              title="Remove this wall"
-            >
+          )}
+          {!canConnectWall && !isConnectedWall && (
+            <button type="button" className="danger" onClick={deleteSelected} title="Remove this wall">
               Delete wall
             </button>
           )}
@@ -206,6 +222,7 @@ export function RoomBottomBar() {
     const walls = wallsAtVertex(state.plan, selectedVertexId)
     const roomIds = getRoomsAtVertex(state.plan, selectedVertexId)
     const sharedCorner = isSharedVertex(state.plan, selectedVertexId)
+    const canConnectCorner = canConnectVertex(state.plan, selectedVertexId)
     const cornerRoomNames = roomIds
       .map((id) => getRoom(state.plan, id)?.name ?? 'Room')
       .join(' · ')
@@ -247,6 +264,16 @@ export function RoomBottomBar() {
         </div>
 
         <div className="room-bottom-bar-actions">
+          {canConnectCorner && (
+            <button
+              type="button"
+              className="connect"
+              onClick={() => connectCorner(selectedVertexId)}
+              title="Merge corners at this point so rooms share the corner again"
+            >
+              Connect corner
+            </button>
+          )}
           {sharedCorner &&
             roomIds.map((roomId) => {
               const name = getRoom(state.plan, roomId)?.name ?? 'Room'
@@ -270,8 +297,8 @@ export function RoomBottomBar() {
     return (
       <footer className="room-bottom-bar room-bottom-bar-empty">
         <span className="room-bottom-bar-hint">
-          Select a room, corner, wall, door, or furniture. Click corners or wall centerlines to
-          disconnect connections.
+          Select a room, corner, wall, door, or furniture. Use Connect / Disconnect in the footer
+          when rooms share a wall or corner.
         </span>
       </footer>
     )
@@ -279,6 +306,7 @@ export function RoomBottomBar() {
 
   const { width, depth } = roomBoundingSize(state.plan, selectedRoom)
   const sharedWalls = getSharedWallsForRoom(state.plan, selectedRoom.id)
+  const connectableWalls = getConnectableWallsForRoom(state.plan, selectedRoom.id)
 
   const setNumber = (field: 'wallHeight', raw: string) => {
     const value = Number(raw)
@@ -318,6 +346,22 @@ export function RoomBottomBar() {
       <RotateButtons onRotate={rotateSelected} />
 
       <div className="room-bottom-bar-actions">
+        {connectableWalls.map(({ wallId, otherRoomIds }) => {
+          const otherNames = otherRoomIds
+            .map((id) => getRoom(state.plan, id)?.name ?? 'Room')
+            .join(', ')
+          return (
+            <button
+              key={wallId}
+              type="button"
+              className="connect"
+              onClick={() => connectSharedWall(wallId)}
+              title={`Link ${selectedRoom.name} and ${otherNames} at this wall`}
+            >
+              Connect to {otherNames}
+            </button>
+          )
+        })}
         {sharedWalls.map(({ wallId, otherRoomIds }) => {
           const otherNames = otherRoomIds
             .map((id) => getRoom(state.plan, id)?.name ?? 'Room')

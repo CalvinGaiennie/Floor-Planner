@@ -1352,10 +1352,36 @@ body.project-notes-resizing {
   cursor: crosshair;
 }
 
-.shared-wall-disconnect-btn {
+.shared-wall-action-group {
   position: absolute;
   z-index: 12;
   transform: translate(-50%, -100%);
+  display: flex;
+  gap: 4px;
+  pointer-events: auto;
+}
+
+.shared-wall-connect-btn {
+  padding: 4px 10px;
+  border: 1px solid #16a34a;
+  border-radius: 6px;
+  background: #fff;
+  color: #15803d;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.15);
+}
+
+.shared-wall-connect-btn:hover {
+  background: #f0fdf4;
+}
+
+.shared-wall-disconnect-btn {
+  position: relative;
+  z-index: 12;
+  transform: none;
   padding: 4px 10px;
   border: 1px solid #dc2626;
   border-radius: 6px;
@@ -1484,6 +1510,16 @@ body.project-notes-resizing {
 
 .room-bottom-bar-actions button.danger:hover {
   background: #991b1b;
+}
+
+.room-bottom-bar-actions button.connect {
+  background: #14532d;
+  border-color: #16a34a;
+  color: #f0fdf4;
+}
+
+.room-bottom-bar-actions button.connect:hover {
+  background: #166534;
 }
 
 .corner-disconnect-list {

@@ -27,6 +27,8 @@ import {
   duplicateRoom,
   reorderRoom,
   disconnectRoomsAtWall,
+  connectRoomsAtWall,
+  connectVertexCorner,
   disconnectWallFromVertex,
   disconnectVertexForRoom,
   findRoomByVertexId,
@@ -146,6 +148,8 @@ type Action =
   | { type: 'DUPLICATE_FURNITURE'; id: string }
   | { type: 'REORDER_ROOM'; activeId: string; overId: string }
   | { type: 'DISCONNECT_SHARED_WALL'; wallId: string }
+  | { type: 'CONNECT_SHARED_WALL'; wallId: string }
+  | { type: 'CONNECT_VERTEX'; vertexId: string }
   | { type: 'DISCONNECT_WALL_FROM_VERTEX'; wallId: string; vertexId: string }
   | { type: 'DISCONNECT_VERTEX_ROOM'; vertexId: string; roomId: string }
   | { type: 'MOVE_ROOM'; roomId: string; point: { x: number; y: number } }
@@ -171,6 +175,8 @@ const PLAN_UNDO_ACTIONS = new Set<Action['type']>([
   'DUPLICATE_FURNITURE',
   'REORDER_ROOM',
   'DISCONNECT_SHARED_WALL',
+  'CONNECT_SHARED_WALL',
+  'CONNECT_VERTEX',
   'DISCONNECT_WALL_FROM_VERTEX',
   'DISCONNECT_VERTEX_ROOM',
   'MOVE_ROOM',
@@ -298,6 +304,16 @@ function reducer(state: EditorState, action: Action): EditorState {
     }
     case 'DISCONNECT_SHARED_WALL': {
       const plan = disconnectRoomsAtWall(state.plan, action.wallId)
+      if (plan === state.plan) return state
+      return { ...state, plan }
+    }
+    case 'CONNECT_SHARED_WALL': {
+      const plan = connectRoomsAtWall(state.plan, action.wallId)
+      if (plan === state.plan) return state
+      return { ...state, plan }
+    }
+    case 'CONNECT_VERTEX': {
+      const plan = connectVertexCorner(state.plan, action.vertexId)
       if (plan === state.plan) return state
       return { ...state, plan }
     }
@@ -448,6 +464,8 @@ interface FloorPlanContextValue {
   duplicateFurniture: (id: string) => void
   reorderRoomInList: (activeId: string, overId: string) => void
   disconnectSharedWall: (wallId: string) => void
+  connectSharedWall: (wallId: string) => void
+  connectCorner: (vertexId: string) => void
   disconnectWallFromCorner: (wallId: string, vertexId: string) => void
   disconnectCornerFromRoom: (vertexId: string, roomId: string) => void
   moveRoom: (roomId: string, point: { x: number; y: number }) => void
@@ -1075,6 +1093,9 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
         dispatchAction({ type: 'REORDER_ROOM', activeId, overId }),
       disconnectSharedWall: (wallId) =>
         dispatchAction({ type: 'DISCONNECT_SHARED_WALL', wallId }),
+      connectSharedWall: (wallId) =>
+        dispatchAction({ type: 'CONNECT_SHARED_WALL', wallId }),
+      connectCorner: (vertexId) => dispatchAction({ type: 'CONNECT_VERTEX', vertexId }),
       disconnectWallFromCorner: (wallId, vertexId) =>
         dispatchAction({ type: 'DISCONNECT_WALL_FROM_VERTEX', wallId, vertexId }),
       disconnectCornerFromRoom: (vertexId, roomId) =>
