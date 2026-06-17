@@ -12,6 +12,7 @@ const CATEGORY_ORDER: FurnitureCategory[] = [
   'chair',
   'armchair',
   'sink',
+  'toilet',
   'fridge',
   'stove',
   'island',
@@ -115,7 +116,7 @@ export function FurniturePanel() {
           <div className="furniture-panel-search">
             <input
               type="search"
-              placeholder="Search beds, sofas, sinks, fridges…"
+              placeholder="Search beds, sofas, sinks, toilets…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               aria-label="Search furniture"

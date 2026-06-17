@@ -1043,6 +1043,27 @@ body.project-notes-resizing {
   background: #991b1b;
 }
 
+.room-bottom-bar-rotate {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.room-bottom-bar-rotate button {
+  border: 1px solid #334155;
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.room-bottom-bar-rotate button:hover {
+  background: #334355;
+}
+
 .view3d-panel {
   position: absolute;
   inset: 0;

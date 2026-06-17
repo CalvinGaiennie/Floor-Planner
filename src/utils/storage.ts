@@ -223,6 +223,20 @@ export interface LocalPlansSession {
   plan: FloorPlan
 }
 
+export function mirrorCloudSessionLocally(session: LocalPlansSession): void {
+  const previous = readPlansIndex()
+  writePlansIndex(session.plans)
+  saveActivePlanIdLocal(session.activePlanId)
+  savePlanForId(session.activePlanId, session.plan)
+
+  const cloudIds = new Set(session.plans.map((p) => p.id))
+  for (const entry of previous) {
+    if (!cloudIds.has(entry.id)) {
+      localStorage.removeItem(planStorageKey(entry.id))
+    }
+  }
+}
+
 export function loadLocalPlansSession(): LocalPlansSession {
   migrateLegacyLocalStorage()
   let plans = readPlansIndex()

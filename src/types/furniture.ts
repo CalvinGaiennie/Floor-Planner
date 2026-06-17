@@ -4,6 +4,7 @@ export type FurnitureCategory =
   | 'chair'
   | 'armchair'
   | 'sink'
+  | 'toilet'
   | 'fridge'
   | 'stove'
   | 'island'

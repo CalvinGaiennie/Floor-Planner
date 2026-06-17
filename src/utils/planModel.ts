@@ -503,6 +503,31 @@ export function translateRoom(plan: FloorPlan, roomId: string, delta: Point2D): 
   }
 }
 
+export function rotateRoom(plan: FloorPlan, roomId: string, deltaRadians: number): FloorPlan {
+  if (Math.abs(deltaRadians) < 1e-6) return plan
+  const room = getRoom(plan, roomId)
+  if (!room) return plan
+
+  const centroid = roomCentroid(plan, room)
+  const vertexIds = new Set(roomVertexIds(plan, room))
+  const cos = Math.cos(deltaRadians)
+  const sin = Math.sin(deltaRadians)
+
+  return sanitizePlan({
+    ...plan,
+    vertices: plan.vertices.map((v) => {
+      if (!vertexIds.has(v.id)) return v
+      const dx = v.x - centroid.x
+      const dy = v.y - centroid.y
+      return {
+        ...v,
+        x: snapToGrid(centroid.x + dx * cos - dy * sin),
+        y: snapToGrid(centroid.y + dx * sin + dy * cos),
+      }
+    }),
+  })
+}
+
 export function moveVertex(plan: FloorPlan, vertexId: string, point: Point2D): FloorPlan {
   const snapped = snapPoint(point)
   return {

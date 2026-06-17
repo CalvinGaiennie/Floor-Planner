@@ -34,6 +34,7 @@ import {
   roomBoundingSize,
   roomCentroid,
   resolveWalls,
+  rotateRoom,
   sanitizePlan,
   translateRoom,
   updateRoomDefaults,
@@ -57,14 +58,17 @@ import {
 import {
   addFurnitureFromCatalog,
   deleteFurniture,
+  getFurniture,
   isFurnitureId,
   moveFurniture,
+  rotateFurniture,
 } from '../utils/furniture'
 import {
   loadFurnitureCatalog,
   saveFurnitureCatalog,
 } from '../data/furnitureCatalog'
-import type { FurnitureCatalogEntry } from '../types/furniture'
+import type { FurnitureCatalogEntry, FurnitureItem } from '../types/furniture'
+import { ROTATE_STEP_RADIANS } from '../utils/geometry'
 import { snapToGrid } from '../utils/imperial'
 import { useAuth } from './AuthContext'
 import {
@@ -126,6 +130,8 @@ type Action =
   | { type: 'ADD_WALL'; start: { x: number; y: number }; end: { x: number; y: number } }
   | { type: 'ADD_FURNITURE'; entry: FurnitureCatalogEntry; point: { x: number; y: number } }
   | { type: 'MOVE_FURNITURE'; id: string; point: { x: number; y: number } }
+  | { type: 'ROTATE_ROOM'; roomId: string; deltaRadians: number }
+  | { type: 'ROTATE_FURNITURE'; id: string; deltaRadians: number }
   | { type: 'SET_PLACEMENT_CATALOG_ID'; catalogId: string | null }
   | { type: 'FINISH_GEOMETRY_EDIT' }
 
@@ -141,6 +147,8 @@ const PLAN_UNDO_ACTIONS = new Set<Action['type']>([
   'ADD_WALL',
   'ADD_FURNITURE',
   'MOVE_FURNITURE',
+  'ROTATE_ROOM',
+  'ROTATE_FURNITURE',
 ])
 
 const CONTINUOUS_UNDO_ACTIONS = new Set<Action['type']>([
@@ -284,6 +292,18 @@ function reducer(state: EditorState, action: Action): EditorState {
         plan: moveFurniture(state.plan, action.id, snapPoint(action.point)),
       }
     }
+    case 'ROTATE_ROOM': {
+      return {
+        ...state,
+        plan: rotateRoom(state.plan, action.roomId, action.deltaRadians),
+      }
+    }
+    case 'ROTATE_FURNITURE': {
+      return {
+        ...state,
+        plan: rotateFurniture(state.plan, action.id, action.deltaRadians),
+      }
+    }
     case 'SET_PLACEMENT_CATALOG_ID': {
       return { ...state, placementCatalogId: action.catalogId, tool: 'select' }
     }
@@ -316,6 +336,7 @@ interface FloorPlanContextValue {
   setPlacementCatalogId: (catalogId: string | null) => void
   placeFurniture: (catalogId: string, point: { x: number; y: number }) => void
   moveFurnitureOnPlan: (id: string, point: { x: number; y: number }) => void
+  rotateSelected: (direction: 'cw' | 'ccw') => void
   addRoom: (point: { x: number; y: number }) => void
   updateRoom: (id: string, patch: RoomPatch) => void
   deleteSelected: () => void
@@ -331,8 +352,11 @@ interface FloorPlanContextValue {
   recordUndoSnapshot: () => void
   undo: () => void
   selectedRoom: Room | null
+  selectedFurniture: FurnitureItem | null
   planWalls: ReturnType<typeof resolveWalls>
   planReady: boolean
+  syncError: string | null
+  refreshFromCloud: () => Promise<void>
 }
 
 const FloorPlanContext = createContext<FloorPlanContextValue | null>(null)
@@ -353,6 +377,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   const [furnitureCatalog, setFurnitureCatalogState] = useState<FurnitureCatalogEntry[]>(
     () => loadFurnitureCatalog(),
   )
+  const [syncError, setSyncError] = useState<string | null>(null)
 
   const undoStackRef = useRef<FloorPlan[]>([])
   const redoStackRef = useRef<FloorPlan[]>([])
@@ -438,6 +463,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
         if (user && isFirebaseConfigured()) {
           const session = await loadUserPlansSession(user.uid)
           if (cancelled) return
+          setSyncError(null)
           skipNextCloudSaveRef.current = true
           setPlanSummaries(session.plans)
           setActivePlanId(session.activePlanId)
@@ -452,6 +478,11 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
         }
         resetUndoStacks()
       } catch {
+        if (!cancelled && user && isFirebaseConfigured()) {
+          setSyncError('Could not load plans from the cloud. Use Account → Refresh from cloud.')
+          setPlanReady(true)
+          return
+        }
         if (!cancelled) {
           const session = loadLocalPlansSession()
           skipNextCloudSaveRef.current = true
@@ -565,6 +596,11 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       return findRoomByVertexId(state.plan, state.selectedId) ?? null
     }
     return null
+  }, [state.plan, state.selectedId])
+
+  const selectedFurniture = useMemo(() => {
+    if (!state.selectedId || !isFurnitureId(state.plan, state.selectedId)) return null
+    return getFurniture(state.plan, state.selectedId) ?? null
   }, [state.plan, state.selectedId])
 
   const createNewPlan = useCallback(async () => {
@@ -734,6 +770,47 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     [dispatchAction],
   )
 
+  const refreshFromCloud = useCallback(async () => {
+    if (!user || !isFirebaseConfigured()) return
+    setSyncError(null)
+    setPlanReady(false)
+    try {
+      const session = await loadUserPlansSession(user.uid)
+      skipNextCloudSaveRef.current = true
+      skipPlanPersistenceRef.current = true
+      setPlanSummaries(session.plans)
+      setActivePlanId(session.activePlanId)
+      dispatch({ type: 'SET_PLAN', plan: session.plan })
+      resetUndoStacks()
+    } catch {
+      setSyncError('Could not load plans from the cloud. Check your connection and try again.')
+    } finally {
+      setPlanReady(true)
+    }
+  }, [user, resetUndoStacks])
+
+  const rotateSelected = useCallback(
+    (direction: 'cw' | 'ccw') => {
+      const delta = direction === 'cw' ? ROTATE_STEP_RADIANS : -ROTATE_STEP_RADIANS
+      if (state.selectedId && isFurnitureId(state.plan, state.selectedId)) {
+        dispatchAction({ type: 'ROTATE_FURNITURE', id: state.selectedId, deltaRadians: delta })
+        return
+      }
+      const room =
+        state.plan.rooms.find((r) => r.id === state.selectedId) ??
+        (state.selectedId && isPlanWallId(state.plan, state.selectedId)
+          ? findRoomByWallId(state.plan, state.selectedId)
+          : null) ??
+        (state.selectedId && isVertexId(state.plan, state.selectedId)
+          ? findRoomByVertexId(state.plan, state.selectedId)
+          : null)
+      if (room) {
+        dispatchAction({ type: 'ROTATE_ROOM', roomId: room.id, deltaRadians: delta })
+      }
+    },
+    [state.plan, state.selectedId, dispatchAction],
+  )
+
   const value = useMemo<FloorPlanContextValue>(
     () => ({
       state,
@@ -753,6 +830,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       setPlacementCatalogId,
       placeFurniture,
       moveFurnitureOnPlan,
+      rotateSelected,
       addRoom: (point) => dispatchAction({ type: 'ADD_ROOM', point }),
       updateRoom: (id, patch) => dispatchAction({ type: 'UPDATE_ROOM', id, patch }),
       deleteSelected: () => dispatchAction({ type: 'DELETE_SELECTED' }),
@@ -770,8 +848,11 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       recordUndoSnapshot,
       undo,
       selectedRoom,
+      selectedFurniture,
       planWalls,
       planReady,
+      syncError,
+      refreshFromCloud,
     }),
     [
       state,
@@ -781,18 +862,23 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       furnitureCatalog,
       planWalls,
       selectedRoom,
+      selectedFurniture,
       recordUndoSnapshot,
       undo,
       planReady,
-      createNewPlan,
-      switchPlan,
-      deleteCurrentPlan,
-      dispatchAction,
-      setMasterNote,
+    createNewPlan,
+    switchPlan,
+    deleteCurrentPlan,
+    dispatchAction,
+    refreshFromCloud,
+    setMasterNote,
       updateCatalogEntry,
       setPlacementCatalogId,
       placeFurniture,
       moveFurnitureOnPlan,
+      rotateSelected,
+      refreshFromCloud,
+      syncError,
     ],
   )
 

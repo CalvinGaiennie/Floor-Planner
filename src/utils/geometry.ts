@@ -1,5 +1,12 @@
 import type { Point2D, Wall } from '../types/floorPlan'
 
+export const ROTATE_STEP_RADIANS = Math.PI / 2
+
+export function rotationDegrees(radians: number): number {
+  const deg = (radians * 180) / Math.PI
+  return Math.round(((deg % 360) + 360) % 360)
+}
+
 export function distance(a: Point2D, b: Point2D): number {
   const dx = b.x - a.x
   const dy = b.y - a.y

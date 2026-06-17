@@ -41,6 +41,7 @@ const FURNITURE_COLORS: Record<FurnitureCategory, { fill: string; stroke: string
   chair: { fill: 'rgba(16, 185, 129, 0.38)', stroke: '#10b981', label: '#047857' },
   armchair: { fill: 'rgba(249, 115, 22, 0.38)', stroke: '#f97316', label: '#c2410c' },
   sink: { fill: 'rgba(6, 182, 212, 0.38)', stroke: '#06b6d4', label: '#0e7490' },
+  toilet: { fill: 'rgba(167, 139, 250, 0.38)', stroke: '#a78bfa', label: '#6d28d9' },
   fridge: { fill: 'rgba(148, 163, 184, 0.38)', stroke: '#94a3b8', label: '#475569' },
   stove: { fill: 'rgba(239, 68, 68, 0.38)', stroke: '#ef4444', label: '#b91c1c' },
   island: { fill: 'rgba(234, 179, 8, 0.38)', stroke: '#eab308', label: '#a16207' },
@@ -104,6 +105,7 @@ export function FloorPlanEditor() {
     placeFurniture,
     moveFurnitureOnPlan,
     furnitureCatalog,
+    rotateSelected,
   } = useFloorPlan()
 
   const { plan, tool, selectedId } = state
@@ -707,6 +709,19 @@ export function FloorPlanEditor() {
       ) {
         e.preventDefault()
         deleteSelected()
+        return
+      }
+
+      if (
+        (e.key === 'r' || e.key === 'R') &&
+        selectedId &&
+        !isEditableTarget(e.target) &&
+        !e.metaKey &&
+        !e.ctrlKey &&
+        !e.altKey
+      ) {
+        e.preventDefault()
+        rotateSelected(e.shiftKey ? 'ccw' : 'cw')
       }
     }
 
@@ -730,7 +745,7 @@ export function FloorPlanEditor() {
       window.removeEventListener('keyup', onKeyUp)
       window.removeEventListener('blur', onBlur)
     }
-  }, [deleteSelected, selectedId, placementCatalogId, setPlacementCatalogId])
+  }, [deleteSelected, selectedId, placementCatalogId, setPlacementCatalogId, rotateSelected])
 
   const getPlanPoint = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current!.getBoundingClientRect()

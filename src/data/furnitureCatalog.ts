@@ -26,6 +26,10 @@ export const DEFAULT_FURNITURE_CATALOG: FurnitureCatalogEntry[] = [
   { id: 'sink-single', label: 'Single bowl sink', category: 'sink', width: 2.5, depth: 2, height: 3, keywords: ['sink', 'single', 'kitchen'] },
   { id: 'sink-double', label: 'Double bowl sink', category: 'sink', width: 2.75, depth: 2, height: 3, keywords: ['sink', 'double', 'kitchen'] },
   { id: 'sink-farm', label: 'Farmhouse sink', category: 'sink', width: 3, depth: 2.25, height: 3, keywords: ['sink', 'farmhouse', 'apron', 'kitchen'] },
+  // Toilets (floor footprint)
+  { id: 'toilet-standard', label: 'Standard toilet', category: 'toilet', width: 2, depth: 2.5, height: 2.5, keywords: ['toilet', 'bathroom', 'wc'] },
+  { id: 'toilet-compact', label: 'Compact toilet', category: 'toilet', width: 1.5, depth: 2.25, height: 2.25, keywords: ['toilet', 'compact', 'bathroom', 'small'] },
+  { id: 'toilet-elongated', label: 'Elongated toilet', category: 'toilet', width: 2, depth: 2.75, height: 2.5, keywords: ['toilet', 'elongated', 'bathroom', 'ada'] },
   // Fridges
   { id: 'fridge-standard', label: 'Standard fridge', category: 'fridge', width: 3, depth: 2.5, height: 6.5, keywords: ['fridge', 'refrigerator', 'kitchen'] },
   { id: 'fridge-counter-depth', label: 'Counter-depth fridge', category: 'fridge', width: 3, depth: 2, height: 6.5, keywords: ['fridge', 'counter depth', 'refrigerator'] },
@@ -84,6 +88,7 @@ export const FURNITURE_CATEGORY_LABELS: Record<FurnitureCatalogEntry['category']
   chair: 'Chairs',
   armchair: 'Armchairs',
   sink: 'Sinks',
+  toilet: 'Toilets',
   fridge: 'Fridges',
   stove: 'Stoves',
   island: 'Islands',

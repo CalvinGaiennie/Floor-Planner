@@ -37,6 +37,8 @@ export function Toolbar() {
     switchPlan,
     deleteCurrentPlan,
     setPlan,
+    syncError,
+    refreshFromCloud,
   } = useFloorPlan()
   const { user, firebaseEnabled, signInWithGoogle, signOut, authError } = useAuth()
 
@@ -220,16 +222,28 @@ export function Toolbar() {
                   Import
                 </button>
                 {user ? (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      signOut()
-                      setAccountMenuOpen(false)
-                    }}
-                  >
-                    Sign out
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        refreshFromCloud()
+                        setAccountMenuOpen(false)
+                      }}
+                    >
+                      Refresh from cloud
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        signOut()
+                        setAccountMenuOpen(false)
+                      }}
+                    >
+                      Sign out
+                    </button>
+                  </>
                 ) : (
                   <button
                     type="button"
@@ -245,6 +259,11 @@ export function Toolbar() {
               </div>
             )}
           </div>
+        )}
+        {!firebaseEnabled && (
+          <p className="toolbar-hint toolbar-error">
+            Cloud sync disabled — set VITE_FIREBASE_* env vars and redeploy.
+          </p>
         )}
         {!firebaseEnabled && (
           <>
@@ -271,6 +290,7 @@ export function Toolbar() {
       </div>
 
       {authError && <p className="toolbar-hint toolbar-error">{authError}</p>}
+      {syncError && <p className="toolbar-hint toolbar-error">{syncError}</p>}
       {activeTool?.hint && <p className="toolbar-hint">{activeTool.hint}</p>}
       {state.viewMode === 'view3d' && (
         <p className="toolbar-hint walk-hint">

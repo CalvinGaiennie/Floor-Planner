@@ -1,14 +1,65 @@
 import { useFloorPlan } from '../context/FloorPlanContext'
+import { rotationDegrees } from '../utils/geometry'
 import { roomBoundingSize } from '../utils/planModel'
 
+function RotateButtons({ onRotate }: { onRotate: (direction: 'cw' | 'ccw') => void }) {
+  return (
+    <div className="room-bottom-bar-rotate">
+      <button type="button" title="Rotate 90° counter-clockwise (Shift+R)" onClick={() => onRotate('ccw')}>
+        ↺
+      </button>
+      <button type="button" title="Rotate 90° clockwise (R)" onClick={() => onRotate('cw')}>
+        ↻
+      </button>
+    </div>
+  )
+}
+
 export function RoomBottomBar() {
-  const { selectedRoom, state, updateRoom, deleteSelected, duplicateRoom } = useFloorPlan()
+  const {
+    selectedRoom,
+    selectedFurniture,
+    state,
+    updateRoom,
+    deleteSelected,
+    duplicateRoom,
+    rotateSelected,
+  } = useFloorPlan()
+
+  if (selectedFurniture) {
+    return (
+      <footer className="room-bottom-bar">
+        <label className="bar-field-compact bar-field-readonly">
+          <span>Name</span>
+          <input type="text" readOnly value={selectedFurniture.label} />
+        </label>
+
+        <label className="bar-field-compact bar-field-readonly">
+          <span>Rot</span>
+          <input
+            type="text"
+            readOnly
+            value={`${rotationDegrees(selectedFurniture.rotation)}°`}
+            title="Rotation"
+          />
+        </label>
+
+        <RotateButtons onRotate={rotateSelected} />
+
+        <div className="room-bottom-bar-actions">
+          <button type="button" className="danger" onClick={deleteSelected}>
+            Delete
+          </button>
+        </div>
+      </footer>
+    )
+  }
 
   if (!selectedRoom) {
     return (
       <footer className="room-bottom-bar room-bottom-bar-empty">
         <span className="room-bottom-bar-hint">
-          Select a room or wall. Use the Wall tool to click two points, or Delete to remove a wall.
+          Select a room, wall, or furniture. Press R to rotate 90°.
         </span>
       </footer>
     )
@@ -56,6 +107,8 @@ export function RoomBottomBar() {
           title="Wall height in feet"
         />
       </label>
+
+      <RotateButtons onRotate={rotateSelected} />
 
       <div className="room-bottom-bar-actions">
         <button type="button" onClick={() => duplicateRoom(selectedRoom.id)}>

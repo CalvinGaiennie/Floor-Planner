@@ -10,6 +10,7 @@ const FURNITURE_CATEGORIES = new Set<FurnitureCategory>([
   'chair',
   'armchair',
   'sink',
+  'toilet',
   'fridge',
   'stove',
   'island',
@@ -84,6 +85,13 @@ export function moveFurniture(plan: FloorPlan, id: string, center: Point2D): Flo
       f.id === id ? { ...f, x: snapToGrid(center.x), y: snapToGrid(center.y) } : f,
     ),
   }
+}
+
+export function rotateFurniture(plan: FloorPlan, id: string, deltaRadians: number): FloorPlan {
+  if (Math.abs(deltaRadians) < 1e-6) return plan
+  const item = getFurniture(plan, id)
+  if (!item) return plan
+  return updateFurnitureItem(plan, id, { rotation: item.rotation + deltaRadians })
 }
 
 export function updateFurnitureItem(
