@@ -6,7 +6,16 @@ import { formatFeetInches } from '../utils/imperial'
 
 const FURNITURE_OPEN_KEY = 'floor-planner-furniture-open'
 
-const CATEGORY_ORDER: FurnitureCategory[] = ['bed', 'sofa', 'chair', 'armchair']
+const CATEGORY_ORDER: FurnitureCategory[] = [
+  'bed',
+  'sofa',
+  'chair',
+  'armchair',
+  'sink',
+  'fridge',
+  'stove',
+  'island',
+]
 
 function FurnitureIcon() {
   return (
@@ -106,7 +115,7 @@ export function FurniturePanel() {
           <div className="furniture-panel-search">
             <input
               type="search"
-              placeholder="Search beds, sofas, chairs…"
+              placeholder="Search beds, sofas, sinks, fridges…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               aria-label="Search furniture"

@@ -22,6 +22,21 @@ export const DEFAULT_FURNITURE_CATALOG: FurnitureCatalogEntry[] = [
   // Armchairs
   { id: 'armchair-standard', label: 'Armchair', category: 'armchair', width: 3, depth: 3, height: 3, keywords: ['armchair', 'chair'] },
   { id: 'armchair-recliner', label: 'Recliner', category: 'armchair', width: 3.5, depth: 3.5, height: 3.5, keywords: ['recliner', 'armchair'] },
+  // Sinks (cabinet footprint)
+  { id: 'sink-single', label: 'Single bowl sink', category: 'sink', width: 2.5, depth: 2, height: 3, keywords: ['sink', 'single', 'kitchen'] },
+  { id: 'sink-double', label: 'Double bowl sink', category: 'sink', width: 2.75, depth: 2, height: 3, keywords: ['sink', 'double', 'kitchen'] },
+  { id: 'sink-farm', label: 'Farmhouse sink', category: 'sink', width: 3, depth: 2.25, height: 3, keywords: ['sink', 'farmhouse', 'apron', 'kitchen'] },
+  // Fridges
+  { id: 'fridge-standard', label: 'Standard fridge', category: 'fridge', width: 3, depth: 2.5, height: 6.5, keywords: ['fridge', 'refrigerator', 'kitchen'] },
+  { id: 'fridge-counter-depth', label: 'Counter-depth fridge', category: 'fridge', width: 3, depth: 2, height: 6.5, keywords: ['fridge', 'counter depth', 'refrigerator'] },
+  { id: 'fridge-compact', label: 'Compact fridge', category: 'fridge', width: 2, depth: 2, height: 5.5, keywords: ['fridge', 'compact', 'refrigerator'] },
+  // Stoves / ranges
+  { id: 'stove-30', label: '30″ range', category: 'stove', width: 2.5, depth: 2.5, height: 3, keywords: ['stove', 'range', 'oven', '30'] },
+  { id: 'stove-36', label: '36″ pro range', category: 'stove', width: 3, depth: 2.5, height: 3.5, keywords: ['stove', 'range', 'pro', '36'] },
+  // Islands
+  { id: 'island-small', label: 'Small island', category: 'island', width: 4, depth: 2.5, height: 3, keywords: ['island', 'kitchen', 'small'] },
+  { id: 'island-medium', label: 'Medium island', category: 'island', width: 5, depth: 3, height: 3, keywords: ['island', 'kitchen', 'medium'] },
+  { id: 'island-large', label: 'Large island', category: 'island', width: 6, depth: 3.5, height: 3, keywords: ['island', 'kitchen', 'large'] },
 ]
 
 function cloneCatalog(entries: FurnitureCatalogEntry[]): FurnitureCatalogEntry[] {
@@ -68,4 +83,8 @@ export const FURNITURE_CATEGORY_LABELS: Record<FurnitureCatalogEntry['category']
   sofa: 'Sofas',
   chair: 'Chairs',
   armchair: 'Armchairs',
+  sink: 'Sinks',
+  fridge: 'Fridges',
+  stove: 'Stoves',
+  island: 'Islands',
 }

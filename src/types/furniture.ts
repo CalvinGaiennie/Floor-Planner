@@ -1,4 +1,12 @@
-export type FurnitureCategory = 'bed' | 'sofa' | 'chair' | 'armchair'
+export type FurnitureCategory =
+  | 'bed'
+  | 'sofa'
+  | 'chair'
+  | 'armchair'
+  | 'sink'
+  | 'fridge'
+  | 'stove'
+  | 'island'
 
 export interface FurnitureCatalogEntry {
   id: string

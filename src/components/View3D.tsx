@@ -64,6 +64,10 @@ const FURNITURE_3D_COLORS: Record<FurnitureCategory, string> = {
   sofa: '#818cf8',
   chair: '#34d399',
   armchair: '#fb923c',
+  sink: '#22d3ee',
+  fridge: '#94a3b8',
+  stove: '#f87171',
+  island: '#facc15',
 }
 
 function FurnitureMesh({ item, selected }: { item: FurnitureItem; selected: boolean }) {

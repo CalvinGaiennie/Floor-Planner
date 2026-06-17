@@ -1,8 +1,26 @@
 import { v4 as uuid } from 'uuid'
 import type { FloorPlan, Point2D } from '../types/floorPlan'
-import type { FurnitureCatalogEntry, FurnitureItem } from '../types/furniture'
+import type { FurnitureCatalogEntry, FurnitureCategory, FurnitureItem } from '../types/furniture'
 import { isPointInsideFurniture } from './geometry'
 import { snapToGrid } from './imperial'
+
+const FURNITURE_CATEGORIES = new Set<FurnitureCategory>([
+  'bed',
+  'sofa',
+  'chair',
+  'armchair',
+  'sink',
+  'fridge',
+  'stove',
+  'island',
+])
+
+function normalizeCategory(category: unknown): FurnitureCategory {
+  if (typeof category === 'string' && FURNITURE_CATEGORIES.has(category as FurnitureCategory)) {
+    return category as FurnitureCategory
+  }
+  return 'chair'
+}
 
 export function isFurnitureId(plan: FloorPlan, id: string): boolean {
   return plan.furniture.some((f) => f.id === id)
@@ -101,13 +119,7 @@ export function normalizeFurnitureList(raw: unknown): FurnitureItem[] {
       id: item.id,
       catalogId: typeof item.catalogId === 'string' ? item.catalogId : 'custom',
       label: typeof item.label === 'string' ? item.label : 'Furniture',
-      category:
-        item.category === 'bed' ||
-        item.category === 'sofa' ||
-        item.category === 'chair' ||
-        item.category === 'armchair'
-          ? item.category
-          : 'chair',
+      category: normalizeCategory(item.category),
       x: item.x,
       y: item.y,
       width: Math.max(0.5, item.width),

@@ -40,6 +40,10 @@ const FURNITURE_COLORS: Record<FurnitureCategory, { fill: string; stroke: string
   sofa: { fill: 'rgba(99, 102, 241, 0.38)', stroke: '#6366f1', label: '#4338ca' },
   chair: { fill: 'rgba(16, 185, 129, 0.38)', stroke: '#10b981', label: '#047857' },
   armchair: { fill: 'rgba(249, 115, 22, 0.38)', stroke: '#f97316', label: '#c2410c' },
+  sink: { fill: 'rgba(6, 182, 212, 0.38)', stroke: '#06b6d4', label: '#0e7490' },
+  fridge: { fill: 'rgba(148, 163, 184, 0.38)', stroke: '#94a3b8', label: '#475569' },
+  stove: { fill: 'rgba(239, 68, 68, 0.38)', stroke: '#ef4444', label: '#b91c1c' },
+  island: { fill: 'rgba(234, 179, 8, 0.38)', stroke: '#eab308', label: '#a16207' },
 }
 
 function snapPlanPoint(plan: FloorPlan, point: Point2D): Point2D {
@@ -515,19 +519,44 @@ export function FloorPlanEditor() {
       const screenW = item.width * PIXELS_PER_FOOT * scale
       const screenD = item.depth * PIXELS_PER_FOOT * scale
       const minDim = Math.min(screenW, screenD)
-      if (minDim >= 28) {
-        const fontSize = Math.min(9, Math.max(6, minDim * 0.12))
-        ctx.fillStyle = selected ? '#1e3a8a' : colors.label
-        ctx.font = `${fontSize}px system-ui`
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        let label = item.label
-        const maxWidth = screenW * 0.85
-        while (label.length > 1 && ctx.measureText(label).width > maxWidth) {
-          label = `${label.slice(0, -2)}…`
-        }
-        ctx.fillText(label, center.x, center.y)
+      if (minDim < 20) continue
+
+      const nameSize = Math.min(9, Math.max(6, minDim * 0.1))
+      const dimSize = Math.min(7, Math.max(5, minDim * 0.07))
+      const lineGap = Math.max(2, nameSize * 0.35)
+
+      ctx.save()
+      ctx.beginPath()
+      ctx.moveTo(screenCorners[0].x, screenCorners[0].y)
+      for (let i = 1; i < screenCorners.length; i++) {
+        ctx.lineTo(screenCorners[i].x, screenCorners[i].y)
       }
+      ctx.closePath()
+      ctx.clip()
+
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillStyle = selected ? '#1e3a8a' : colors.label
+      ctx.font = `${nameSize}px system-ui`
+
+      let label = item.label
+      const maxNameWidth = screenW * 0.85
+      while (label.length > 1 && ctx.measureText(label).width > maxNameWidth) {
+        label = `${label.slice(0, -2)}…`
+      }
+      ctx.fillText(label, center.x, center.y - (minDim >= 36 ? lineGap : 0))
+
+      if (minDim >= 36) {
+        ctx.font = `${dimSize}px system-ui`
+        ctx.fillStyle = selected ? '#2563eb' : '#64748b'
+        ctx.fillText(
+          `${formatFeetInches(item.width)} × ${formatFeetInches(item.depth)}`,
+          center.x,
+          center.y + lineGap,
+        )
+      }
+
+      ctx.restore()
     }
 
     for (const wall of planWalls) {
