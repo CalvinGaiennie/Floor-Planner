@@ -697,6 +697,40 @@ export function addWallBetweenPoints(
   }
 }
 
+export function resizeRoomBoundingBox(
+  plan: FloorPlan,
+  roomId: string,
+  targetWidth: number,
+  targetDepth: number,
+): FloorPlan {
+  const room = getRoom(plan, roomId)
+  if (!room) return plan
+
+  const { width, depth } = roomBoundingSize(plan, room)
+  if (width <= 0 || depth <= 0) return plan
+
+  const tw = Math.max(MIN_WALL_LENGTH, snapToGrid(targetWidth))
+  const td = Math.max(MIN_WALL_LENGTH, snapToGrid(targetDepth))
+  const sx = tw / width
+  const sy = td / depth
+  if (Math.abs(sx - 1) < 1e-6 && Math.abs(sy - 1) < 1e-6) return plan
+
+  const centroid = roomCentroid(plan, room)
+  const vertexIds = new Set(roomVertexIds(plan, room))
+
+  return sanitizePlan({
+    ...plan,
+    vertices: plan.vertices.map((v) => {
+      if (!vertexIds.has(v.id)) return v
+      return {
+        ...v,
+        x: snapToGrid(centroid.x + (v.x - centroid.x) * sx),
+        y: snapToGrid(centroid.y + (v.y - centroid.y) * sy),
+      }
+    }),
+  })
+}
+
 export function updateRoomDefaults(
   plan: FloorPlan,
   roomId: string,

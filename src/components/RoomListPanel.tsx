@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { useFloorPlan } from '../context/FloorPlanContext'
 import type { Room } from '../types/floorPlan'
+import { MIN_WALL_LENGTH } from '../types/floorPlan'
 import { formatFeetInches } from '../utils/imperial'
 import {
   getWall,
@@ -76,13 +78,29 @@ function RoomThumbnail({ room, plan }: { room: Room; plan: import('../types/floo
 }
 
 export function RoomListPanel() {
-  const { state, selectedRoom, select, setTool } = useFloorPlan()
+  const { state, selectedRoom, select, setTool, updateRoom } = useFloorPlan()
   const { plan } = state
   const { rooms } = plan
+  const [expandedRoomIds, setExpandedRoomIds] = useState<Set<string>>(() => new Set())
 
-  const handleSelect = (roomId: string) => {
+  const handleRowClick = (roomId: string) => {
     setTool('select')
     select(roomId)
+    setExpandedRoomIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(roomId)) next.delete(roomId)
+      else next.add(roomId)
+      return next
+    })
+  }
+
+  const setDimension = (roomId: string, field: 'width' | 'depth', raw: string, current: { width: number; depth: number }) => {
+    const value = Number(raw)
+    if (!Number.isFinite(value) || value < MIN_WALL_LENGTH) return
+    updateRoom(roomId, {
+      width: field === 'width' ? value : current.width,
+      depth: field === 'depth' ? value : current.depth,
+    })
   }
 
   return (
@@ -98,14 +116,16 @@ export function RoomListPanel() {
           <ul className="room-list">
             {rooms.map((room) => {
               const selected = selectedRoom?.id === room.id
+              const expanded = expandedRoomIds.has(room.id)
               const { width, depth } = roomBoundingSize(plan, room)
               const closed = isRoomClosed(plan, room)
               return (
-                <li key={room.id}>
+                <li key={room.id} className={`room-list-entry${selected ? ' selected' : ''}${expanded ? ' expanded' : ''}`}>
                   <button
                     type="button"
-                    className={`room-list-item${selected ? ' selected' : ''}`}
-                    onClick={() => handleSelect(room.id)}
+                    className="room-list-item"
+                    onClick={() => handleRowClick(room.id)}
+                    aria-expanded={expanded}
                   >
                     <RoomThumbnail room={room} plan={plan} />
                     <span className="room-list-details">
@@ -118,6 +138,40 @@ export function RoomListPanel() {
                       </span>
                     </span>
                   </button>
+                  {expanded && (
+                    <div className="room-list-edit">
+                      <label className="room-list-field">
+                        <span>Name</span>
+                        <input
+                          type="text"
+                          value={room.name}
+                          onChange={(e) => updateRoom(room.id, { name: e.target.value })}
+                        />
+                      </label>
+                      <div className="room-list-field-row">
+                        <label className="room-list-field">
+                          <span>Width (ft)</span>
+                          <input
+                            type="number"
+                            min={MIN_WALL_LENGTH}
+                            step={0.5}
+                            value={Number(width.toFixed(1))}
+                            onChange={(e) => setDimension(room.id, 'width', e.target.value, { width, depth })}
+                          />
+                        </label>
+                        <label className="room-list-field">
+                          <span>Depth (ft)</span>
+                          <input
+                            type="number"
+                            min={MIN_WALL_LENGTH}
+                            step={0.5}
+                            value={Number(depth.toFixed(1))}
+                            onChange={(e) => setDimension(room.id, 'depth', e.target.value, { width, depth })}
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  )}
                 </li>
               )
             })}

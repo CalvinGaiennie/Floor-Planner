@@ -25,10 +25,13 @@ import {
   duplicateRoom,
   findRoomByVertexId,
   findRoomByWallId,
+  getRoom,
   isPlanWallId,
   isVertexId,
   lastCreatedRoom,
   moveVertex,
+  resizeRoomBoundingBox,
+  roomBoundingSize,
   roomCentroid,
   resolveWalls,
   sanitizePlan,
@@ -86,6 +89,8 @@ type RoomPatch = {
   name?: string
   wallHeight?: number
   wallThickness?: number
+  width?: number
+  depth?: number
 }
 
 type Action =
@@ -154,9 +159,23 @@ function reducer(state: EditorState, action: Action): EditorState {
       }
     }
     case 'UPDATE_ROOM': {
+      const { width, depth, ...meta } = action.patch
+      let plan = state.plan
+      if (width !== undefined || depth !== undefined) {
+        const room = getRoom(plan, action.id)
+        if (room) {
+          const size = roomBoundingSize(plan, room)
+          plan = resizeRoomBoundingBox(
+            plan,
+            action.id,
+            width ?? size.width,
+            depth ?? size.depth,
+          )
+        }
+      }
       return {
         ...state,
-        plan: updateRoomDefaults(state.plan, action.id, action.patch),
+        plan: updateRoomDefaults(plan, action.id, meta),
       }
     }
     case 'DELETE_SELECTED': {
