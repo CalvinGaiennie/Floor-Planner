@@ -20,6 +20,7 @@ const FURNITURE_CATEGORIES = new Set<FurnitureCategory>([
   'stove',
   'island',
   'shelf',
+  'tv',
 ])
 
 /** Snap furniture so corners align to the half-foot grid (not just the center). */

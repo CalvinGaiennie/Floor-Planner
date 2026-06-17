@@ -298,21 +298,20 @@ function doubleSwingGeometry(wall: Wall, door: Door): DoorSwingArc[] {
   const leftHinge = pointOnWall(wall, door.offset - door.width / 2)
   const rightHinge = pointOnWall(wall, door.offset + door.width / 2)
   const center = pointOnWall(wall, door.offset)
-  const leftSwing = wallDir + perpSign * (Math.PI / 2)
-  const rightSwing = wallDir - perpSign * (Math.PI / 2)
+  const sharedSwing = wallDir + perpSign * (Math.PI / 2)
   const leftLeafEnd = {
-    x: leftHinge.x + Math.cos(leftSwing) * half,
-    y: leftHinge.y + Math.sin(leftSwing) * half,
+    x: leftHinge.x + Math.cos(sharedSwing) * half,
+    y: leftHinge.y + Math.sin(sharedSwing) * half,
   }
   const rightLeafEnd = {
-    x: rightHinge.x + Math.cos(rightSwing) * half,
-    y: rightHinge.y + Math.sin(rightSwing) * half,
+    x: rightHinge.x + Math.cos(sharedSwing) * half,
+    y: rightHinge.y + Math.sin(sharedSwing) * half,
   }
   const centerFromLeft = Math.atan2(center.y - leftHinge.y, center.x - leftHinge.x)
   const centerFromRight = Math.atan2(center.y - rightHinge.y, center.x - rightHinge.x)
   return [
-    { hinge: leftHinge, leafEnd: leftLeafEnd, arcStart: leftSwing, arcEnd: centerFromLeft },
-    { hinge: rightHinge, leafEnd: rightLeafEnd, arcStart: rightSwing, arcEnd: centerFromRight },
+    { hinge: leftHinge, leafEnd: leftLeafEnd, arcStart: sharedSwing, arcEnd: centerFromLeft },
+    { hinge: rightHinge, leafEnd: rightLeafEnd, arcStart: sharedSwing, arcEnd: centerFromRight },
   ]
 }
 

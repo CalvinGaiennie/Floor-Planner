@@ -59,6 +59,7 @@ const FURNITURE_COLORS: Record<FurnitureCategory, { fill: string; stroke: string
   stove: { fill: 'rgba(239, 68, 68, 0.38)', stroke: '#ef4444', label: '#b91c1c' },
   island: { fill: 'rgba(234, 179, 8, 0.38)', stroke: '#eab308', label: '#a16207' },
   shelf: { fill: 'rgba(168, 85, 247, 0.38)', stroke: '#a855f7', label: '#7e22ce' },
+  tv: { fill: 'rgba(30, 41, 59, 0.42)', stroke: '#334155', label: '#1e293b' },
 }
 
 function snapPlanPoint(plan: FloorPlan, point: Point2D): Point2D {

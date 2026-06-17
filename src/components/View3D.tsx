@@ -76,6 +76,7 @@ const FURNITURE_3D_COLORS: Record<FurnitureCategory, string> = {
   stove: '#f87171',
   island: '#facc15',
   shelf: '#c084fc',
+  tv: '#475569',
 }
 
 function FurnitureMesh({ item, selected }: { item: FurnitureItem; selected: boolean }) {

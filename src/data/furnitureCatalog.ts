@@ -75,6 +75,23 @@ export const DEFAULT_FURNITURE_CATALOG: FurnitureCatalogEntry[] = [
   { id: 'shelf-closet-run', label: '6′ closet shelf run', category: 'shelf', width: 6, depth: 2, height: 2, keywords: ['shelf', 'closet', 'storage', '6'] },
   { id: 'shelf-floating-3', label: '3′ floating shelf', category: 'shelf', width: 3, depth: 1, height: 0.5, keywords: ['shelf', 'floating', 'wall'] },
   { id: 'shelf-garage', label: '4′ garage shelving', category: 'shelf', width: 4, depth: 1.5, height: 6, keywords: ['shelf', 'garage', 'storage', 'wire'] },
+  // TVs — wall-mounted (thin footprint), on stand (screen + stand), and consoles / entertainment centers
+  { id: 'tv-wall-32', label: '32″ wall-mounted TV', category: 'tv', width: 2.33, depth: 0.25, height: 2, keywords: ['tv', 'television', '32', 'wall', 'mounted', 'flat'] },
+  { id: 'tv-wall-43', label: '43″ wall-mounted TV', category: 'tv', width: 3.25, depth: 0.25, height: 2.25, keywords: ['tv', 'television', '43', 'wall', 'mounted', 'flat'] },
+  { id: 'tv-wall-55', label: '55″ wall-mounted TV', category: 'tv', width: 4, depth: 0.25, height: 2.5, keywords: ['tv', 'television', '55', 'wall', 'mounted', 'flat'] },
+  { id: 'tv-wall-65', label: '65″ wall-mounted TV', category: 'tv', width: 4.75, depth: 0.25, height: 2.75, keywords: ['tv', 'television', '65', 'wall', 'mounted', 'flat'] },
+  { id: 'tv-wall-75', label: '75″ wall-mounted TV', category: 'tv', width: 5.5, depth: 0.25, height: 3, keywords: ['tv', 'television', '75', 'wall', 'mounted', 'flat'] },
+  { id: 'tv-32', label: '32″ TV on stand', category: 'tv', width: 2.33, depth: 0.75, height: 2, keywords: ['tv', 'television', '32', 'stand', 'screen', 'living'] },
+  { id: 'tv-43', label: '43″ TV on stand', category: 'tv', width: 3.25, depth: 0.75, height: 2.25, keywords: ['tv', 'television', '43', 'stand', 'screen', 'living'] },
+  { id: 'tv-55', label: '55″ TV on stand', category: 'tv', width: 4, depth: 0.9, height: 2.5, keywords: ['tv', 'television', '55', 'stand', 'screen', 'living'] },
+  { id: 'tv-65', label: '65″ TV on stand', category: 'tv', width: 4.75, depth: 1, height: 2.75, keywords: ['tv', 'television', '65', 'stand', 'screen', 'living'] },
+  { id: 'tv-75', label: '75″ TV on stand', category: 'tv', width: 5.5, depth: 1, height: 3, keywords: ['tv', 'television', '75', 'stand', 'screen', 'living'] },
+  { id: 'tv-stand-small', label: 'Small TV stand (3′)', category: 'tv', width: 3, depth: 1.5, height: 2.5, keywords: ['tv', 'stand', 'console', 'media', 'small', 'living'] },
+  { id: 'tv-console-4', label: '4′ media console', category: 'tv', width: 4, depth: 1.5, height: 2.5, keywords: ['tv', 'console', 'media', 'stand', 'living', '4'] },
+  { id: 'tv-console-5', label: '5′ media console', category: 'tv', width: 5, depth: 1.75, height: 2.5, keywords: ['tv', 'console', 'media', 'stand', 'living', '5'] },
+  { id: 'tv-entertainment-6', label: '6′ entertainment center', category: 'tv', width: 6, depth: 2, height: 5, keywords: ['tv', 'entertainment', 'center', 'cabinet', 'living', '6'] },
+  { id: 'tv-entertainment-8', label: '8′ entertainment center', category: 'tv', width: 8, depth: 2, height: 5, keywords: ['tv', 'entertainment', 'center', 'cabinet', 'living', '8'] },
+  { id: 'tv-entertainment-corner', label: 'Corner entertainment center', category: 'tv', width: 5, depth: 5, height: 5, keywords: ['tv', 'entertainment', 'center', 'corner', 'cabinet', 'living'] },
 ]
 
 function cloneCatalog(entries: FurnitureCatalogEntry[]): FurnitureCatalogEntry[] {
@@ -131,4 +148,5 @@ export const FURNITURE_CATEGORY_LABELS: Record<FurnitureCatalogEntry['category']
   stove: 'Stoves',
   island: 'Islands',
   shelf: 'Shelves',
+  tv: 'TVs',
 }
