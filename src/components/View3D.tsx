@@ -10,6 +10,7 @@ import type { FurnitureCategory, FurnitureItem } from '../types/furniture'
 import { pointOnWall, wallAngle } from '../utils/geometry'
 import { wallSolidSegments } from '../utils/doors'
 import { WORKSPACE_SIZE } from '../utils/workspace'
+import { WorkspaceAlerts } from './WorkspaceAlerts'
 
 function walkSpawnFromWalls(walls: Wall[]): THREE.Vector3 {
   if (walls.length === 0) {
@@ -331,6 +332,7 @@ export function View3D() {
         </span>
       </div>
       <div className="view3d-canvas-wrap" id="view3d-canvas-wrap">
+        <WorkspaceAlerts />
         <Canvas shadows camera={{ position: [15, 12, 15], fov: 50 }}>
           <Suspense fallback={null}>
             <Scene

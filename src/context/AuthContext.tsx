@@ -15,6 +15,7 @@ import {
   type ReactNode,
 } from 'react'
 import { auth, isFirebaseConfigured } from '../lib/firebase'
+import { parseFirebaseError, type AuthAlert } from '../utils/cloudErrors'
 
 interface AuthContextValue {
   user: User | null
@@ -22,7 +23,7 @@ interface AuthContextValue {
   firebaseEnabled: boolean
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
-  authError: string | null
+  authError: AuthAlert | null
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -30,7 +31,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [authReady, setAuthReady] = useState(!isFirebaseConfigured())
-  const [authError, setAuthError] = useState<string | null>(null)
+  const [authError, setAuthError] = useState<AuthAlert | null>(null)
 
   useEffect(() => {
     if (!isFirebaseConfigured() || !auth) {
@@ -48,14 +49,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = useCallback(async () => {
     if (!auth) {
-      setAuthError('Firebase is not configured. Add keys to .env.local.')
+      setAuthError({
+        message: 'Firebase is not configured. Add keys to .env.local.',
+      })
       return
     }
     setAuthError(null)
     try {
       await signInWithPopup(auth, new GoogleAuthProvider())
     } catch (err) {
-      setAuthError(err instanceof Error ? err.message : 'Sign-in failed')
+      const parsed = parseFirebaseError(err)
+      console.error('[auth] sign-in failed', parsed, err)
+      setAuthError({
+        message: parsed.message,
+        firebaseCode: parsed.code,
+      })
     }
   }, [])
 

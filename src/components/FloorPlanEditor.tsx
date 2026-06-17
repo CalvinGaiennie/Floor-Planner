@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { RoomListPanel } from './RoomListPanel'
+import { WorkspaceAlerts } from './WorkspaceAlerts'
 import { useFloorPlan } from '../context/FloorPlanContext'
 import { GRID_SIZE, type FloorPlan, type Point2D } from '../types/floorPlan'
 import {
@@ -1075,6 +1076,7 @@ export function FloorPlanEditor() {
         </div>
       </div>
       <div className="plan-canvas-area" ref={containerRef}>
+        <WorkspaceAlerts />
         <RoomListPanel />
         <canvas
           ref={canvasRef}

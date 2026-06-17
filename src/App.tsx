@@ -17,7 +17,7 @@ function AppContent() {
     const onWheel = (e: WheelEvent) => {
       const target = e.target
       if (!(target instanceof Element)) return
-      if (target.closest('input, select, textarea, .toolbar, .room-bottom-bar, .room-list-panel, .room-list-fab, .plan-panel, .project-notes-panel, .project-notes-fab, .furniture-panel, .furniture-panel-fab')) return
+      if (target.closest('input, select, textarea, .toolbar, .room-bottom-bar, .room-list-panel, .room-list-fab, .plan-panel, .project-notes-panel, .project-notes-fab, .workspace-alerts-panel, .workspace-alerts-fab, .furniture-panel, .furniture-panel-fab')) return
       e.preventDefault()
     }
 

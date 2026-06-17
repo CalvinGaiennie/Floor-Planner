@@ -5,11 +5,6 @@ import { useFloorPlan } from '../context/FloorPlanContext'
 import { exportPlanJson, importPlanJson } from '../utils/storage'
 import { requestView3dPointerLock } from '../utils/view3dPointerLock'
 import type { Tool, ViewMode } from '../types/floorPlan'
-import {
-  ToolbarAlertChip,
-  ToolbarMessageModal,
-  type ToolbarAlert,
-} from './ToolbarMessageModal'
 
 const TOOLS: { id: Tool; label: string; hint: string }[] = [
   { id: 'select', label: 'Select', hint: '' },
@@ -33,7 +28,6 @@ export function Toolbar() {
   const [planMenuOpen, setPlanMenuOpen] = useState(false)
   const [planMenuPos, setPlanMenuPos] = useState({ top: 0, left: 0 })
   const [accountMenuPos, setAccountMenuPos] = useState({ top: 0, right: 0 })
-  const [openAlertId, setOpenAlertId] = useState<string | null>(null)
   const {
     state,
     planSummaries,
@@ -44,42 +38,9 @@ export function Toolbar() {
     switchPlan,
     deleteCurrentPlan,
     setPlan,
-    syncError,
     firebaseProjectId,
   } = useFloorPlan()
-  const { user, firebaseEnabled, signInWithGoogle, signOut, authError } = useAuth()
-
-  const activeTool = TOOLS.find((t) => t.id === state.tool)
-
-  const toolbarAlerts: ToolbarAlert[] = []
-  if (!firebaseEnabled) {
-    toolbarAlerts.push({
-      id: 'firebase-disabled',
-      title: 'Cloud sync disabled',
-      message: 'Cloud sync disabled — set VITE_FIREBASE_* env vars and redeploy.',
-      details:
-        'This build is missing Firebase configuration. Add VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN, VITE_FIREBASE_PROJECT_ID, VITE_FIREBASE_APP_ID, and related vars to your hosting environment, then redeploy. Until then, plans are not saved to the cloud.',
-    })
-  }
-  if (authError) {
-    toolbarAlerts.push({
-      id: 'auth',
-      title: 'Sign-in failed',
-      message: authError,
-      details: 'Try signing in again from the account menu. If the problem continues, check that your browser allows pop-ups and that Google sign-in is enabled for this Firebase project.',
-    })
-  }
-  if (syncError) {
-    toolbarAlerts.push({
-      id: 'sync',
-      title: 'Cloud save failed',
-      message: syncError,
-      details:
-        'Your plan saves to Firebase automatically when you are signed in. Check your internet connection, confirm you are signed in, and try making another edit. If saves succeed, this message will clear. Export your plan from the account menu if you need a backup.',
-    })
-  }
-
-  const openAlert = toolbarAlerts.find((a) => a.id === openAlertId) ?? null
+  const { user, firebaseEnabled, signInWithGoogle, signOut } = useAuth()
 
   const accountLabel = user
     ? (user.displayName ?? user.email ?? 'Account')
@@ -120,6 +81,8 @@ export function Toolbar() {
     const rect = accountBtnRef.current.getBoundingClientRect()
     setAccountMenuPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right })
   }, [accountMenuOpen, accountLabel])
+
+  const activeTool = TOOLS.find((t) => t.id === state.tool)
 
   return (
     <header className="toolbar">
@@ -320,14 +283,7 @@ export function Toolbar() {
         />
       </div>
 
-      <div className="toolbar-messages">
-        {toolbarAlerts.map((alert) => (
-          <ToolbarAlertChip
-            key={alert.id}
-            alert={alert}
-            onOpen={() => setOpenAlertId(alert.id)}
-          />
-        ))}
+      <div className="toolbar-hints">
         {activeTool?.hint && <p className="toolbar-hint">{activeTool.hint}</p>}
         {state.viewMode === 'view3d' && (
           <p className="toolbar-hint walk-hint">
@@ -335,8 +291,6 @@ export function Toolbar() {
           </p>
         )}
       </div>
-
-      <ToolbarMessageModal alert={openAlert} onClose={() => setOpenAlertId(null)} />
     </header>
   )
 }

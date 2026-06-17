@@ -90,6 +90,11 @@ import {
   setActivePlanIdInFirestore,
 } from '../services/firestorePlans'
 import { isFirebaseConfigured, getFirebaseProjectId } from '../lib/firebase'
+import {
+  logCloudError,
+  parseFirebaseError,
+  type CloudSyncAlert,
+} from '../utils/cloudErrors'
 
 const MAX_UNDO_HISTORY = 50
 
@@ -400,7 +405,7 @@ interface FloorPlanContextValue {
   selectedDoor: Door | null
   planWalls: ReturnType<typeof resolveWalls>
   planReady: boolean
-  syncError: string | null
+  cloudAlert: CloudSyncAlert | null
   firebaseProjectId: string | null
 }
 
@@ -422,7 +427,30 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   const [furnitureCatalog, setFurnitureCatalogState] = useState<FurnitureCatalogEntry[]>(
     () => loadFurnitureCatalog(),
   )
-  const [syncError, setSyncError] = useState<string | null>(null)
+  const [cloudAlert, setCloudAlert] = useState<CloudSyncAlert | null>(null)
+
+  const reportCloudError = useCallback(
+    (
+      operation: CloudSyncAlert['operation'],
+      message: string,
+      err?: unknown,
+      planId?: string,
+    ) => {
+      const parsed = err !== undefined ? parseFirebaseError(err) : undefined
+      if (err !== undefined) {
+        logCloudError(operation, err, { planId })
+      }
+      setCloudAlert({
+        operation,
+        message,
+        firebaseCode: parsed?.code,
+        firebaseMessage: parsed?.message,
+        timestamp: Date.now(),
+        planId,
+      })
+    },
+    [],
+  )
 
   const undoStackRef = useRef<FloorPlan[]>([])
   const redoStackRef = useRef<FloorPlan[]>([])
@@ -437,9 +465,6 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   const planSummariesRef = useRef(planSummaries)
   planSummariesRef.current = planSummaries
 
-  const CLOUD_SAVE_ERROR =
-    'Your last two changes could not be saved to the cloud. Check your connection and try again.'
-
   const persistPlanToCloud = useCallback(
     async (plan: FloorPlan, planId: string): Promise<boolean> => {
       if (!user || !planId || !isFirebaseConfigured()) return true
@@ -449,20 +474,25 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
         await savePlanToFirestore(user.uid, planId, plan)
         if (generation === saveGenerationRef.current) {
           consecutiveSaveFailuresRef.current = 0
-          setSyncError(null)
+          setCloudAlert(null)
         }
         return true
-      } catch {
+      } catch (err) {
         if (generation === saveGenerationRef.current) {
           consecutiveSaveFailuresRef.current += 1
           if (consecutiveSaveFailuresRef.current >= 2) {
-            setSyncError(CLOUD_SAVE_ERROR)
+            reportCloudError(
+              'save',
+              'Your last two changes could not be saved to the cloud.',
+              err,
+              planId,
+            )
           }
         }
         return false
       }
     },
-    [user],
+    [user, reportCloudError],
   )
 
   const flushCloudSave = useCallback(async () => {
@@ -534,7 +564,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
           if (cancelled) return
           consecutiveSaveFailuresRef.current = 0
           saveGenerationRef.current = 0
-          setSyncError(null)
+          setCloudAlert(null)
           skipNextCloudSaveRef.current = true
           setPlanSummaries(session.plans)
           setActivePlanId(session.activePlanId)
@@ -548,9 +578,13 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
           dispatch({ type: 'SET_PLAN', plan: session.plan })
         }
         resetUndoStacks()
-      } catch {
+      } catch (err) {
         if (!cancelled && user && isFirebaseConfigured()) {
-          setSyncError('Could not load plans from the cloud. Check your connection and try again.')
+          reportCloudError(
+            'load-session',
+            'Could not load plans from the cloud.',
+            err,
+          )
           setPlanReady(true)
           return
         }
@@ -570,7 +604,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [user, authReady, resetUndoStacks])
+  }, [user, authReady, resetUndoStacks, reportCloudError])
 
   const recordUndoSnapshot = useCallback(() => {
     undoStackRef.current.push(clonePlan(planRef.current))
@@ -732,16 +766,21 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
         try {
           plan = await loadPlanFromFirestoreServer(user.uid, planId)
           if (!plan) {
-            setSyncError('That plan was not found in the cloud.')
+            setCloudAlert({
+              operation: 'missing-plan',
+              message: 'That plan was not found in the cloud.',
+              timestamp: Date.now(),
+              planId,
+            })
             plan = createEmptyPlan(
               planSummariesRef.current.find((p) => p.id === planId)?.name ?? 'Untitled',
             )
           } else {
-            setSyncError(null)
+            setCloudAlert(null)
           }
           await setActivePlanIdInFirestore(user.uid, planId)
-        } catch {
-          setSyncError('Could not load that plan from the cloud.')
+        } catch (err) {
+          reportCloudError('switch-plan', 'Could not load that plan from the cloud.', err, planId)
           return
         }
       } else {
@@ -757,7 +796,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       })
       resetUndoStacks()
     },
-    [flushCloudSave, user, resetUndoStacks],
+    [flushCloudSave, user, resetUndoStacks, reportCloudError],
   )
 
   const deleteCurrentPlan = useCallback(async () => {
@@ -779,8 +818,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       try {
         await deletePlanFromFirestore(user.uid, currentId)
         await setActivePlanIdInFirestore(user.uid, nextId)
-      } catch {
-        setSyncError('Could not delete that plan in the cloud.')
+      } catch (err) {
+        reportCloudError('delete-plan', 'Could not delete that plan in the cloud.', err, currentId)
         return
       }
     } else {
@@ -923,7 +962,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       selectedDoor,
       planWalls,
       planReady,
-      syncError,
+      cloudAlert,
       firebaseProjectId: getFirebaseProjectId(),
     }),
     [
@@ -951,7 +990,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       addDoor,
       moveDoorOnPlan,
       rotateSelected,
-      syncError,
+      cloudAlert,
     ],
   )
 
