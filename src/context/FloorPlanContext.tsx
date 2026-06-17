@@ -78,6 +78,7 @@ import {
   loadPlanFromFirestoreServer,
   loadMasterNoteFromFirestore,
   loadUserPlansSession,
+  pushLocalPlansToCloud,
   saveMasterNoteToFirestore,
   savePlanToFirestore,
   setActivePlanIdInFirestore,
@@ -358,6 +359,7 @@ interface FloorPlanContextValue {
   planReady: boolean
   syncError: string | null
   refreshFromCloud: () => Promise<void>
+  pushLocalPlansToCloud: () => Promise<void>
   firebaseProjectId: string | null
 }
 
@@ -798,6 +800,25 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     }
   }, [user, resetUndoStacks])
 
+  const pushLocalPlansToCloudHandler = useCallback(async () => {
+    if (!user || !isFirebaseConfigured()) return
+    setSyncError(null)
+    setPlanReady(false)
+    try {
+      const session = await pushLocalPlansToCloud(user.uid)
+      skipNextCloudSaveRef.current = true
+      skipPlanPersistenceRef.current = true
+      setPlanSummaries(session.plans)
+      setActivePlanId(session.activePlanId)
+      dispatch({ type: 'SET_PLAN', plan: session.plan })
+      resetUndoStacks()
+    } catch {
+      setSyncError('Could not upload local plans to the cloud.')
+    } finally {
+      setPlanReady(true)
+    }
+  }, [user, resetUndoStacks])
+
   const rotateSelected = useCallback(
     (direction: 'cw' | 'ccw') => {
       const delta = direction === 'cw' ? ROTATE_STEP_RADIANS : -ROTATE_STEP_RADIANS
@@ -862,6 +883,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       planReady,
       syncError,
       refreshFromCloud,
+      pushLocalPlansToCloud: pushLocalPlansToCloudHandler,
       firebaseProjectId: getFirebaseProjectId(),
     }),
     [
@@ -881,6 +903,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       deleteCurrentPlan,
       dispatchAction,
       refreshFromCloud,
+      pushLocalPlansToCloudHandler,
       setMasterNote,
       updateCatalogEntry,
       setPlacementCatalogId,

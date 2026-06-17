@@ -224,6 +224,8 @@ export interface LocalPlansSession {
 }
 
 export function mirrorCloudSessionLocally(session: LocalPlansSession): void {
+  if (session.plans.length === 0) return
+
   const previous = readPlansIndex()
   writePlansIndex(session.plans)
   saveActivePlanIdLocal(session.activePlanId)

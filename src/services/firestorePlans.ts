@@ -82,8 +82,13 @@ async function listPlansFromServer(userId: string): Promise<PlanSummary[]> {
   if (!isFirebaseConfigured() || !db) return []
 
   await migrateLegacyPlanIfNeeded(userId)
-  const snap = await getDocsFromServer(plansCollection(userId))
-  return snap.docs.map((d) => summaryFromDoc(d.id, d.data()))
+  try {
+    const snap = await getDocsFromServer(plansCollection(userId))
+    return snap.docs.map((d) => summaryFromDoc(d.id, d.data()))
+  } catch {
+    const snap = await getDocs(plansCollection(userId))
+    return snap.docs.map((d) => summaryFromDoc(d.id, d.data()))
+  }
 }
 
 export async function getActivePlanIdFromFirestore(userId: string): Promise<string | null> {
@@ -97,9 +102,15 @@ export async function getActivePlanIdFromFirestore(userId: string): Promise<stri
 async function getActivePlanIdFromServer(userId: string): Promise<string | null> {
   if (!isFirebaseConfigured() || !db) return null
 
-  const snap = await getDocFromServer(settingsRef(userId))
-  const id = snap.data()?.activePlanId
-  return typeof id === 'string' ? id : null
+  try {
+    const snap = await getDocFromServer(settingsRef(userId))
+    const id = snap.data()?.activePlanId
+    return typeof id === 'string' ? id : null
+  } catch {
+    const snap = await getDoc(settingsRef(userId))
+    const id = snap.data()?.activePlanId
+    return typeof id === 'string' ? id : null
+  }
 }
 
 export async function setActivePlanIdInFirestore(userId: string, planId: string): Promise<void> {
@@ -138,13 +149,19 @@ export async function loadPlanFromFirestore(
 async function loadPlanFromServer(userId: string, planId: string): Promise<FloorPlan | null> {
   if (!isFirebaseConfigured() || !db) return null
 
-  const snap = await getDocFromServer(planRef(userId, planId))
-  if (!snap.exists()) return null
-
-  const data = snap.data()
-  if (!data.plan) return null
-
-  return normalizePlanFromJson(data.plan)
+  try {
+    const snap = await getDocFromServer(planRef(userId, planId))
+    if (!snap.exists()) return null
+    const data = snap.data()
+    if (!data.plan) return null
+    return normalizePlanFromJson(data.plan)
+  } catch {
+    const snap = await getDoc(planRef(userId, planId))
+    if (!snap.exists()) return null
+    const data = snap.data()
+    if (!data.plan) return null
+    return normalizePlanFromJson(data.plan)
+  }
 }
 
 /** Load a plan directly from Firestore servers (bypasses local cache). */
@@ -255,6 +272,24 @@ async function uploadLocalSessionToFirestore(userId: string): Promise<UserPlansS
   const session = { plans, activePlanId, plan }
   await mirrorAllCloudPlansLocally(userId, session)
   return session
+}
+
+/** Upload every local plan to Firestore (use when cloud is empty or out of date). */
+export async function pushLocalPlansToCloud(userId: string): Promise<UserPlansSession> {
+  const session = await uploadLocalSessionToFirestore(userId)
+  await mergeMissingLocalPlansToFirestore(userId, session.plans)
+  const plans = await listPlansFromServer(userId)
+  let activePlanId = session.activePlanId
+  if (!plans.some((p) => p.id === activePlanId)) {
+    activePlanId = plans[0]?.id ?? activePlanId
+    if (activePlanId) await setActivePlanIdInFirestore(userId, activePlanId)
+  }
+  const plan = activePlanId
+    ? ((await loadPlanFromServer(userId, activePlanId)) ?? session.plan)
+    : session.plan
+  const merged: UserPlansSession = { plans, activePlanId, plan }
+  await mirrorAllCloudPlansLocally(userId, merged)
+  return merged
 }
 
 export async function loadUserPlansSession(userId: string): Promise<UserPlansSession> {
