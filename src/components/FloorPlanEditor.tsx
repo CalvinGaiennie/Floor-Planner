@@ -51,6 +51,7 @@ function screenToPlan(point: Point2D, offset: Point2D, scale: number): Point2D {
 
 export function FloorPlanEditor() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [offset, setOffset] = useState<Point2D | null>(null)
   const [scale, setScale] = useState(1)
@@ -80,6 +81,7 @@ export function FloorPlanEditor() {
     recordUndoSnapshot,
     finishGeometryEdit,
     selectedRoom,
+    setPlanName,
   } = useFloorPlan()
 
   const { plan, tool, selectedId } = state
@@ -144,10 +146,14 @@ export function FloorPlanEditor() {
   }, [])
 
   useEffect(() => {
+    const panel = panelRef.current
     const container = containerRef.current
-    if (!container) return
+    if (!panel || !container) return
 
     const onWheel = (e: WheelEvent) => {
+      const target = e.target
+      if (target instanceof Element && target.closest('.panel-plan-name')) return
+
       e.preventDefault()
       if (wallDragIdRef.current || vertexDragIdRef.current || moveDragIdRef.current) return
 
@@ -156,8 +162,11 @@ export function FloorPlanEditor() {
 
       const rect = container.getBoundingClientRect()
 
+      // Pinch-to-zoom on trackpad sets ctrlKey (or metaKey on some browsers).
+      const isPinchZoom = e.ctrlKey || e.metaKey || e.deltaZ !== 0
+
       // Two-finger trackpad scroll — pan without changing zoom.
-      if (!e.ctrlKey && e.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
+      if (!isPinchZoom && e.deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
         userAdjustedRef.current = true
         setOffset({
           x: currentOffset.x - e.deltaX,
@@ -167,11 +176,14 @@ export function FloorPlanEditor() {
       }
 
       const currentScale = scaleRef.current
-      const mouse = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+      const mouse = {
+        x: Math.min(rect.width, Math.max(0, e.clientX - rect.left)),
+        y: Math.min(rect.height, Math.max(0, e.clientY - rect.top)),
+      }
       const planBefore = screenToPlan(mouse, currentOffset, currentScale)
       const fitScale = computeFitScale(rect.width, rect.height)
       setFitScale(fitScale)
-      const zoomRate = e.ctrlKey ? 0.0032 : 0.0024
+      const zoomRate = isPinchZoom ? 0.0032 : 0.0024
       const zoomFactor = Math.exp(-e.deltaY * zoomRate)
       const nextScale = Math.min(MAX_ZOOM_SCALE, Math.max(fitScale, currentScale * zoomFactor))
 
@@ -197,8 +209,8 @@ export function FloorPlanEditor() {
       })
     }
 
-    container.addEventListener('wheel', onWheel, { passive: false })
-    return () => container.removeEventListener('wheel', onWheel)
+    panel.addEventListener('wheel', onWheel, { passive: false, capture: true })
+    return () => panel.removeEventListener('wheel', onWheel, { capture: true })
   }, [])
 
   const applyZoomScale = useCallback((nextScale: number) => {
@@ -775,47 +787,53 @@ export function FloorPlanEditor() {
   }
 
   return (
-    <div className="panel plan-panel">
+    <div className="panel plan-panel" ref={panelRef}>
       <div className="panel-header">
-        <h2>2D Floor Plan</h2>
-        <span className="panel-meta">360' × 180' · Space/Alt+drag · scroll/arrow keys to pan · pinch to zoom</span>
-      </div>
-      <div className="panel-zoom-bar">
-        <span className="zoom-label">Zoom</span>
-        <div className="zoom-controls">
-          <button
-            type="button"
-            className="zoom-btn"
-            title="Zoom out"
-            onClick={() => applyZoomScale(scale / 1.25)}
-          >
-            −
-          </button>
-          <input
-            type="range"
-            className="zoom-slider"
-            min={0}
-            max={100}
-            value={zoomSliderValue}
-            onChange={(e) => handleZoomSlider(Number(e.target.value))}
-            aria-label="Zoom level"
-          />
-          <button
-            type="button"
-            className="zoom-btn"
-            title="Zoom in"
-            onClick={() => applyZoomScale(scale * 1.25)}
-          >
-            +
-          </button>
-          <button
-            type="button"
-            className="zoom-fit-btn"
-            title="Fit view to your plan (rooms and items); empty plans show full workspace"
-            onClick={fitToView}
-          >
-            Fit
-          </button>
+        <input
+          type="text"
+          className="panel-plan-name"
+          value={plan.name}
+          onChange={(e) => setPlanName(e.target.value)}
+          aria-label="Plan name"
+          placeholder="Plan name"
+        />
+        <div className="panel-header-zoom">
+          <span className="zoom-label">Zoom</span>
+          <div className="zoom-controls">
+            <button
+              type="button"
+              className="zoom-btn"
+              title="Zoom out"
+              onClick={() => applyZoomScale(scale / 1.25)}
+            >
+              −
+            </button>
+            <input
+              type="range"
+              className="zoom-slider"
+              min={0}
+              max={100}
+              value={zoomSliderValue}
+              onChange={(e) => handleZoomSlider(Number(e.target.value))}
+              aria-label="Zoom level"
+            />
+            <button
+              type="button"
+              className="zoom-btn"
+              title="Zoom in"
+              onClick={() => applyZoomScale(scale * 1.25)}
+            >
+              +
+            </button>
+            <button
+              type="button"
+              className="zoom-fit-btn"
+              title="Fit view to your plan (rooms and items); empty plans show full workspace"
+              onClick={fitToView}
+            >
+              Fit
+            </button>
+          </div>
         </div>
       </div>
       <div className="plan-canvas-area" ref={containerRef}>

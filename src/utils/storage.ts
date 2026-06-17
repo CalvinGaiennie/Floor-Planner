@@ -40,12 +40,16 @@ function isNewFormatRoom(room: LegacyRectangleRoom): boolean {
   return Array.isArray(room.wallIds) && room.wallIds.length > 0
 }
 
+export function normalizePlanFromJson(data: unknown): FloorPlan {
+  return normalizePlan(data as LegacyPlan)
+}
+
 function normalizePlan(raw: LegacyPlan): FloorPlan {
   const base = createEmptyPlan(raw.name ?? 'My Home')
+  const hasWallGraph = Array.isArray(raw.vertices) && Array.isArray(raw.walls)
 
   if (
-    Array.isArray(raw.vertices) &&
-    Array.isArray(raw.walls) &&
+    hasWallGraph &&
     Array.isArray(raw.rooms) &&
     raw.rooms.length > 0 &&
     raw.rooms.every(isNewFormatRoom)
@@ -59,6 +63,20 @@ function normalizePlan(raw: LegacyPlan): FloorPlan {
   }
 
   let plan = base
+
+  // Load wall-graph rooms even when mixed with legacy rooms or the fast path failed.
+  if (hasWallGraph && Array.isArray(raw.rooms)) {
+    const wallGraphRooms = raw.rooms.filter(isNewFormatRoom) as Room[]
+    if (wallGraphRooms.length > 0) {
+      plan = sanitizePlan({
+        name: raw.name ?? base.name,
+        vertices: raw.vertices as FloorPlan['vertices'],
+        walls: raw.walls as FloorPlan['walls'],
+        rooms: wallGraphRooms,
+      })
+    }
+  }
+
   if (Array.isArray(raw.rooms)) {
     for (const room of raw.rooms) {
       if (isNewFormatRoom(room)) continue
@@ -100,18 +118,143 @@ function normalizePlan(raw: LegacyPlan): FloorPlan {
   return sanitizePlan(plan)
 }
 
+const ACTIVE_PLAN_ID_KEY = 'floor-planner-active-plan-id'
+const PLANS_INDEX_KEY = 'floor-planner-plans-index'
+
+export interface PlanSummary {
+  id: string
+  name: string
+}
+
+function planStorageKey(planId: string) {
+  return `${STORAGE_KEY}-${planId}`
+}
+
+function readPlansIndex(): PlanSummary[] {
+  try {
+    const raw = localStorage.getItem(PLANS_INDEX_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as PlanSummary[]
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function writePlansIndex(plans: PlanSummary[]) {
+  localStorage.setItem(PLANS_INDEX_KEY, JSON.stringify(plans))
+}
+
+export function loadActivePlanIdLocal(): string | null {
+  return localStorage.getItem(ACTIVE_PLAN_ID_KEY)
+}
+
+export function saveActivePlanIdLocal(planId: string) {
+  localStorage.setItem(ACTIVE_PLAN_ID_KEY, planId)
+}
+
+export function savePlanForId(planId: string, plan: FloorPlan): void {
+  localStorage.setItem(planStorageKey(planId), JSON.stringify(plan))
+}
+
+export function loadPlanForId(planId: string): FloorPlan | null {
+  try {
+    const raw = localStorage.getItem(planStorageKey(planId))
+    if (!raw) return null
+    return normalizePlan(JSON.parse(raw) as LegacyPlan)
+  } catch {
+    return null
+  }
+}
+
+function migrateLegacyLocalStorage(): void {
+  const index = readPlansIndex()
+  if (index.length > 0) return
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return
+    const plan = normalizePlan(JSON.parse(raw) as LegacyPlan)
+    const planId = crypto.randomUUID()
+    savePlanForId(planId, plan)
+    writePlansIndex([{ id: planId, name: plan.name }])
+    saveActivePlanIdLocal(planId)
+  } catch {
+    // ignore
+  }
+}
+
+export function nextDefaultPlanName(existing: PlanSummary[]): string {
+  const used = new Set(existing.map((p) => p.name))
+  let i = existing.length + 1
+  while (used.has(`Home ${i}`)) i += 1
+  return `Home ${i}`
+}
+
+export interface LocalPlansSession {
+  plans: PlanSummary[]
+  activePlanId: string
+  plan: FloorPlan
+}
+
+export function loadLocalPlansSession(): LocalPlansSession {
+  migrateLegacyLocalStorage()
+  let plans = readPlansIndex()
+
+  if (plans.length === 0) {
+    const plan = createEmptyPlan()
+    const planId = crypto.randomUUID()
+    savePlanForId(planId, plan)
+    plans = [{ id: planId, name: plan.name }]
+    writePlansIndex(plans)
+    saveActivePlanIdLocal(planId)
+    return { plans, activePlanId: planId, plan }
+  }
+
+  let activePlanId = loadActivePlanIdLocal()
+  if (!activePlanId || !plans.some((p) => p.id === activePlanId)) {
+    activePlanId = plans[0].id
+    saveActivePlanIdLocal(activePlanId)
+  }
+
+  const plan = loadPlanForId(activePlanId) ?? createEmptyPlan(plans[0].name)
+  return { plans, activePlanId, plan }
+}
+
+export function createLocalPlan(plan: FloorPlan): string {
+  const plans = readPlansIndex()
+  const planId = crypto.randomUUID()
+  savePlanForId(planId, plan)
+  plans.push({ id: planId, name: plan.name })
+  writePlansIndex(plans)
+  saveActivePlanIdLocal(planId)
+  return planId
+}
+
+export function deleteLocalPlan(planId: string): void {
+  const plans = readPlansIndex().filter((p) => p.id !== planId)
+  writePlansIndex(plans)
+  localStorage.removeItem(planStorageKey(planId))
+}
+
+export function updateLocalPlanName(planId: string, name: string): void {
+  const plans = readPlansIndex().map((p) => (p.id === planId ? { ...p, name } : p))
+  writePlansIndex(plans)
+}
+
 export function savePlan(plan: FloorPlan): void {
+  const activeId = loadActivePlanIdLocal()
+  if (activeId) {
+    savePlanForId(activeId, plan)
+    updateLocalPlanName(activeId, plan.name)
+    return
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(plan))
 }
 
 export function loadPlan(): FloorPlan {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return createEmptyPlan()
-    return normalizePlan(JSON.parse(raw) as LegacyPlan)
-  } catch {
-    return createEmptyPlan()
-  }
+  const session = loadLocalPlansSession()
+  return session.plan
 }
 
 export function exportPlanJson(plan: FloorPlan): void {

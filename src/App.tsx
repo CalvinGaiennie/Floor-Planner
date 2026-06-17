@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { AuthProvider } from './context/AuthContext'
 import { FloorPlanProvider, useFloorPlan } from './context/FloorPlanContext'
 import { FloorPlanEditor } from './components/FloorPlanEditor'
 import { RoomBottomBar } from './components/RoomBottomBar'
@@ -14,7 +15,7 @@ function AppContent() {
     const onWheel = (e: WheelEvent) => {
       const target = e.target
       if (!(target instanceof Element)) return
-      if (target.closest('input, select, textarea, .toolbar, .room-bottom-bar, .panel-zoom-bar, .room-list-panel')) return
+      if (target.closest('input, select, textarea, .toolbar, .room-bottom-bar, .room-list-panel, .plan-panel')) return
       e.preventDefault()
     }
 
@@ -39,9 +40,11 @@ function AppContent() {
 
 function App() {
   return (
-    <FloorPlanProvider>
-      <AppContent />
-    </FloorPlanProvider>
+    <AuthProvider>
+      <FloorPlanProvider>
+        <AppContent />
+      </FloorPlanProvider>
+    </AuthProvider>
   )
 }
 

@@ -1,4 +1,5 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useAuth } from '../context/AuthContext'
 import { useFloorPlan } from '../context/FloorPlanContext'
 import { exportPlanJson, importPlanJson } from '../utils/storage'
 import type { Tool, ViewMode } from '../types/floorPlan'
@@ -18,17 +19,40 @@ const VIEWS: { id: ViewMode; label: string }[] = [
 
 export function Toolbar() {
   const fileRef = useRef<HTMLInputElement>(null)
+  const accountMenuRef = useRef<HTMLDivElement>(null)
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const {
     state,
+    planSummaries,
+    activePlanId,
     setTool,
     setViewMode,
     setWalkMode,
     addRoom,
-    newPlan,
+    createNewPlan,
+    switchPlan,
+    deleteCurrentPlan,
     setPlan,
   } = useFloorPlan()
+  const { user, firebaseEnabled, signInWithGoogle, signOut, authError } = useAuth()
 
   const activeTool = TOOLS.find((t) => t.id === state.tool)
+
+  const accountLabel = user
+    ? (user.displayName ?? user.email ?? 'Account')
+    : 'Account'
+
+  useEffect(() => {
+    if (!accountMenuOpen) return
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (accountMenuRef.current?.contains(e.target as Node)) return
+      setAccountMenuOpen(false)
+    }
+
+    window.addEventListener('pointerdown', onPointerDown)
+    return () => window.removeEventListener('pointerdown', onPointerDown)
+  }, [accountMenuOpen])
 
   return (
     <header className="toolbar">
@@ -37,8 +61,32 @@ export function Toolbar() {
         <span className="toolbar-subtitle">Imperial · Single floor</span>
       </div>
 
+      <div className="toolbar-group toolbar-plans">
+        <select
+          className="toolbar-plan-select"
+          value={activePlanId ?? ''}
+          onChange={(e) => switchPlan(e.target.value)}
+          aria-label="Select floor plan"
+        >
+          {planSummaries.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+        <button type="button" onClick={() => createNewPlan()} title="New home">
+          + New
+        </button>
+        <button
+          type="button"
+          className="danger"
+          onClick={() => deleteCurrentPlan()}
+          disabled={planSummaries.length <= 1}
+          title="Delete this home"
+        >
+          Delete
+        </button>
+      </div>
+
       <div className="toolbar-group">
-        <span className="toolbar-label">Tools</span>
         <div className="toolbar-buttons">
           {TOOLS.map((tool) => (
             <button
@@ -80,6 +128,78 @@ export function Toolbar() {
       </div>
 
       <div className="toolbar-group toolbar-actions">
+        {firebaseEnabled && (
+          <div className="toolbar-auth" ref={accountMenuRef}>
+            <button
+              type="button"
+              className={`toolbar-account-btn${accountMenuOpen ? ' open' : ''}`}
+              title={user?.email ?? 'Account menu'}
+              aria-expanded={accountMenuOpen}
+              aria-haspopup="menu"
+              onClick={() => setAccountMenuOpen((open) => !open)}
+            >
+              <span className="toolbar-account-label">{accountLabel}</span>
+              <span className="toolbar-account-chevron" aria-hidden="true" />
+            </button>
+            {accountMenuOpen && (
+              <div className="toolbar-account-menu" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    exportPlanJson(state.plan)
+                    setAccountMenuOpen(false)
+                  }}
+                >
+                  Export
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    fileRef.current?.click()
+                    setAccountMenuOpen(false)
+                  }}
+                >
+                  Import
+                </button>
+                {user ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      signOut()
+                      setAccountMenuOpen(false)
+                    }}
+                  >
+                    Sign out
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      signInWithGoogle()
+                      setAccountMenuOpen(false)
+                    }}
+                  >
+                    Sign in with Google
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+        {!firebaseEnabled && (
+          <>
+            <button type="button" onClick={() => exportPlanJson(state.plan)}>
+              Export
+            </button>
+            <button type="button" onClick={() => fileRef.current?.click()}>
+              Import
+            </button>
+          </>
+        )}
         {state.viewMode === 'view3d' && (
           <button
             type="button"
@@ -89,15 +209,6 @@ export function Toolbar() {
             {state.walkMode ? 'Exit Walk' : 'Walk Through'}
           </button>
         )}
-        <button type="button" onClick={() => exportPlanJson(state.plan)}>
-          Export
-        </button>
-        <button type="button" onClick={() => fileRef.current?.click()}>
-          Import
-        </button>
-        <button type="button" onClick={newPlan}>
-          New Plan
-        </button>
         <input
           ref={fileRef}
           type="file"
@@ -112,6 +223,7 @@ export function Toolbar() {
         />
       </div>
 
+      {authError && <p className="toolbar-hint toolbar-error">{authError}</p>}
       {activeTool && <p className="toolbar-hint">{activeTool.hint}</p>}
       {state.walkMode && (
         <p className="toolbar-hint walk-hint">
