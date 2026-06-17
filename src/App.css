@@ -59,6 +59,12 @@
   line-height: 1.5;
 }
 
+.room-list-open-tag {
+  font-size: 0.6rem;
+  color: #94a3b8;
+  font-style: italic;
+}
+
 .room-list-scroll {
   flex: 1;
   min-height: 0;
@@ -424,6 +430,12 @@
 
 .bar-field-compact input[type='text'] {
   width: 120px;
+}
+
+.bar-field-readonly input {
+  color: #94a3b8;
+  background: #1e293b;
+  cursor: default;
 }
 
 .room-bottom-bar-actions {

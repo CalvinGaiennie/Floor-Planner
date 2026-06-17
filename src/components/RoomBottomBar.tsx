@@ -1,19 +1,22 @@
 import { useFloorPlan } from '../context/FloorPlanContext'
+import { roomBoundingSize } from '../utils/planModel'
 
 export function RoomBottomBar() {
-  const { selectedRoom, updateRoom, deleteSelected, duplicateRoom } = useFloorPlan()
+  const { selectedRoom, state, updateRoom, deleteSelected, duplicateRoom } = useFloorPlan()
 
   if (!selectedRoom) {
     return (
       <footer className="room-bottom-bar room-bottom-bar-empty">
         <span className="room-bottom-bar-hint">
-          Select a room or wall to edit its name, dimensions, and wall height.
+          Select a room or wall. Use the Wall tool to click two points, or Delete to remove a wall.
         </span>
       </footer>
     )
   }
 
-  const setNumber = (field: 'width' | 'depth' | 'wallHeight', raw: string) => {
+  const { width, depth } = roomBoundingSize(state.plan, selectedRoom)
+
+  const setNumber = (field: 'wallHeight', raw: string) => {
     const value = Number(raw)
     if (Number.isFinite(value) && value > 0) {
       updateRoom(selectedRoom.id, { [field]: value })
@@ -31,30 +34,14 @@ export function RoomBottomBar() {
         />
       </label>
 
-      <label className="bar-field-compact">
+      <label className="bar-field-compact bar-field-readonly">
         <span>W</span>
-        <input
-          type="number"
-          min={4}
-          max={80}
-          step={0.5}
-          value={selectedRoom.width}
-          onChange={(e) => setNumber('width', e.target.value)}
-          title="Width in feet"
-        />
+        <input type="text" readOnly value={width.toFixed(1)} title="Bounding width (feet)" />
       </label>
 
-      <label className="bar-field-compact">
+      <label className="bar-field-compact bar-field-readonly">
         <span>D</span>
-        <input
-          type="number"
-          min={4}
-          max={80}
-          step={0.5}
-          value={selectedRoom.depth}
-          onChange={(e) => setNumber('depth', e.target.value)}
-          title="Depth in feet"
-        />
+        <input type="text" readOnly value={depth.toFixed(1)} title="Bounding depth (feet)" />
       </label>
 
       <label className="bar-field-compact">

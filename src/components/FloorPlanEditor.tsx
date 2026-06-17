@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { RoomListPanel } from './RoomListPanel'
 import { useFloorPlan } from '../context/FloorPlanContext'
-import { GRID_SIZE, type Point2D } from '../types/floorPlan'
+import { GRID_SIZE, type FloorPlan, type Point2D } from '../types/floorPlan'
 import {
   computeFitScale,
   computeFitScaleForBounds,
@@ -12,17 +12,28 @@ import {
   WORKSPACE_SIZE,
 } from '../utils/workspace'
 import { projectOntoWall, wallLength } from '../utils/geometry'
-import { formatFeetInches } from '../utils/imperial'
+import { formatFeetInches, snapToGrid } from '../utils/imperial'
 import {
   createWallDragAnchor,
-  findRoomByWallId,
+  findVertexNear,
+  getVertex,
+  isPlanWallId,
   isPointInsideRoom,
-  isWallId,
-  parseWallId,
-  roomCorners,
+  isVertexId,
+  roomBoundingSize,
+  roomCentroid,
+  roomClosedPolygon,
+  roomVertexIds,
+  VERTEX_SNAP_DISTANCE,
   wallDragCursor,
   type WallDragAnchor,
-} from '../utils/rooms'
+} from '../utils/planModel'
+
+function snapPlanPoint(plan: FloorPlan, point: Point2D): Point2D {
+  const near = findVertexNear(plan, point)
+  if (near) return { x: near.x, y: near.y }
+  return { x: snapToGrid(point.x), y: snapToGrid(point.y) }
+}
 
 function planToScreen(point: Point2D, offset: Point2D, scale: number): Point2D {
   return {
@@ -51,17 +62,24 @@ export function FloorPlanEditor() {
   )
   const [moveDragId, setMoveDragId] = useState<string | null>(null)
   const [wallDragId, setWallDragId] = useState<string | null>(null)
+  const [vertexDragId, setVertexDragId] = useState<string | null>(null)
   const [altKeyHeld, setAltKeyHeld] = useState(false)
   const [spaceKeyHeld, setSpaceKeyHeld] = useState(false)
+  const [wallPlaceStart, setWallPlaceStart] = useState<Point2D | null>(null)
 
   const {
     state,
     planWalls,
     select,
     addRoom,
-    moveSelected,
+    moveRoom,
     resizeWall,
+    moveVertex,
+    addWall,
     deleteSelected,
+    recordUndoSnapshot,
+    finishGeometryEdit,
+    selectedRoom,
   } = useFloorPlan()
 
   const { plan, tool, selectedId } = state
@@ -74,6 +92,9 @@ export function FloorPlanEditor() {
   const wallDragAnchorRef = useRef<WallDragAnchor | null>(null)
   const spaceKeyHeldRef = useRef(false)
   const moveDragStartRef = useRef<Point2D | null>(null)
+  const wallDragIdRef = useRef<string | null>(null)
+  const vertexDragIdRef = useRef<string | null>(null)
+  const moveDragIdRef = useRef<string | null>(null)
   const MOVE_DRAG_THRESHOLD_PX = 4
 
   const startPan = useCallback((clientX: number, clientY: number) => {
@@ -128,6 +149,8 @@ export function FloorPlanEditor() {
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
+      if (wallDragIdRef.current || vertexDragIdRef.current || moveDragIdRef.current) return
+
       const currentOffset = offsetRef.current
       if (!currentOffset) return
 
@@ -256,16 +279,33 @@ export function FloorPlanEditor() {
 
   const hitTest = useCallback(
     (point: Point2D): string | null => {
+      for (const v of plan.vertices) {
+        if (Math.hypot(v.x - point.x, v.y - point.y) < VERTEX_SNAP_DISTANCE) return v.id
+      }
+
+      if (selectedRoom) {
+        for (const vid of roomVertexIds(plan, selectedRoom)) {
+          const v = getVertex(plan, vid)
+          if (v && Math.hypot(v.x - point.x, v.y - point.y) < VERTEX_SNAP_DISTANCE) return vid
+        }
+      }
+
+      let bestWallId: string | null = null
+      let bestWallDist = 1.25
       for (const wall of planWalls) {
         const { dist } = projectOntoWall(wall, point)
-        if (dist < 0.75) return wall.id
+        if (dist < bestWallDist) {
+          bestWallDist = dist
+          bestWallId = wall.id
+        }
       }
+      if (bestWallId) return bestWallId
       for (const room of plan.rooms) {
-        if (isPointInsideRoom(point, room)) return room.id
+        if (isPointInsideRoom(plan, point, room)) return room.id
       }
       return null
     },
-    [plan, planWalls],
+    [plan, planWalls, selectedRoom],
   )
 
   const draw = useCallback(() => {
@@ -351,33 +391,37 @@ export function FloorPlanEditor() {
     ctx.fill()
 
     for (const room of plan.rooms) {
-      const corners = roomCorners(room)
-      const screenCorners = corners.map((c) => planToScreen(c, offset, scale))
+      const closedPolygon = roomClosedPolygon(plan, room)
+      const closed = closedPolygon !== null
       const selected = room.id === selectedId
 
-      ctx.beginPath()
-      ctx.moveTo(screenCorners[0].x, screenCorners[0].y)
-      for (let i = 1; i < screenCorners.length; i++) {
-        ctx.lineTo(screenCorners[i].x, screenCorners[i].y)
+      if (closedPolygon) {
+        const screenCorners = closedPolygon.map((c) => planToScreen(c, offset, scale))
+        ctx.beginPath()
+        ctx.moveTo(screenCorners[0].x, screenCorners[0].y)
+        for (let i = 1; i < screenCorners.length; i++) {
+          ctx.lineTo(screenCorners[i].x, screenCorners[i].y)
+        }
+        ctx.closePath()
+        ctx.fillStyle = selected ? 'rgba(59, 130, 246, 0.28)' : 'rgba(226, 232, 240, 0.72)'
+        ctx.fill()
       }
-      ctx.closePath()
-      ctx.fillStyle = selected ? 'rgba(59, 130, 246, 0.28)' : 'rgba(226, 232, 240, 0.72)'
-      ctx.fill()
-      ctx.strokeStyle = selected ? '#1d4ed8' : '#94a3b8'
-      ctx.lineWidth = selected ? 2.5 : 1.5
-      ctx.stroke()
 
-      const center = planToScreen(room.position, offset, scale)
-      const roomScreenW = room.width * PIXELS_PER_FOOT * scale
-      const roomScreenH = room.depth * PIXELS_PER_FOOT * scale
+      const center = planToScreen(roomCentroid(plan, room), offset, scale)
+      const { width: roomW, depth: roomD } = roomBoundingSize(plan, room)
+      const roomScreenW = roomW * PIXELS_PER_FOOT * scale
+      const roomScreenH = roomD * PIXELS_PER_FOOT * scale
       const minDim = Math.min(roomScreenW, roomScreenH)
 
-      if (minDim >= 20) {
-        const nameSize = Math.min(9, Math.max(6, minDim * 0.1))
-        const dimSize = Math.min(7, Math.max(5, minDim * 0.07))
-        const lineGap = Math.max(2, nameSize * 0.35)
+      if (minDim < 20) continue
 
-        ctx.save()
+      const nameSize = Math.min(9, Math.max(6, minDim * 0.1))
+      const dimSize = Math.min(7, Math.max(5, minDim * 0.07))
+      const lineGap = Math.max(2, nameSize * 0.35)
+
+      ctx.save()
+      if (closedPolygon) {
+        const screenCorners = closedPolygon.map((c) => planToScreen(c, offset, scale))
         ctx.beginPath()
         ctx.moveTo(screenCorners[0].x, screenCorners[0].y)
         for (let i = 1; i < screenCorners.length; i++) {
@@ -385,31 +429,31 @@ export function FloorPlanEditor() {
         }
         ctx.closePath()
         ctx.clip()
-
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillStyle = selected ? '#1e3a8a' : '#0f172a'
-        ctx.font = `${nameSize}px system-ui`
-
-        let displayName = room.name
-        const maxNameWidth = roomScreenW * 0.8
-        while (displayName.length > 1 && ctx.measureText(displayName).width > maxNameWidth) {
-          displayName = `${displayName.slice(0, -2)}…`
-        }
-        ctx.fillText(displayName, center.x, center.y - (minDim >= 36 ? lineGap : 0))
-
-        if (minDim >= 36) {
-          ctx.font = `${dimSize}px system-ui`
-          ctx.fillStyle = selected ? '#2563eb' : '#64748b'
-          ctx.fillText(
-            `${formatFeetInches(room.width)} × ${formatFeetInches(room.depth)}`,
-            center.x,
-            center.y + lineGap,
-          )
-        }
-
-        ctx.restore()
       }
+
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillStyle = selected ? '#1e3a8a' : '#0f172a'
+      ctx.font = `${nameSize}px system-ui`
+
+      let displayName = closed ? room.name : `${room.name} (open)`
+      const maxNameWidth = roomScreenW * 0.8
+      while (displayName.length > 1 && ctx.measureText(displayName).width > maxNameWidth) {
+        displayName = `${displayName.slice(0, -2)}…`
+      }
+      ctx.fillText(displayName, center.x, center.y - (minDim >= 36 ? lineGap : 0))
+
+      if (minDim >= 36 && closed) {
+        ctx.font = `${dimSize}px system-ui`
+        ctx.fillStyle = selected ? '#2563eb' : '#64748b'
+        ctx.fillText(
+          `${formatFeetInches(roomW)} × ${formatFeetInches(roomD)}`,
+          center.x,
+          center.y + lineGap,
+        )
+      }
+
+      ctx.restore()
     }
 
     for (const wall of planWalls) {
@@ -440,6 +484,42 @@ export function FloorPlanEditor() {
       }
     }
 
+    if (selectedRoom) {
+      for (const vid of roomVertexIds(plan, selectedRoom)) {
+        const v = getVertex(plan, vid)
+        if (!v) continue
+        const screen = planToScreen(v, offset, scale)
+        const isVertexSelected = selectedId === vid
+        const radius = isVertexSelected ? 7 : 5
+        ctx.fillStyle = isVertexSelected ? '#2563eb' : '#ffffff'
+        ctx.strokeStyle = '#1d4ed8'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.arc(screen.x, screen.y, radius, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.stroke()
+      }
+    }
+
+    if (wallPlaceStart && tool === 'wall') {
+      const start = planToScreen(wallPlaceStart, offset, scale)
+      const end = cursorPlan
+        ? planToScreen(cursorPlan, offset, scale)
+        : start
+      ctx.strokeStyle = '#2563eb'
+      ctx.lineWidth = 2
+      ctx.setLineDash([6, 4])
+      ctx.beginPath()
+      ctx.moveTo(start.x, start.y)
+      ctx.lineTo(end.x, end.y)
+      ctx.stroke()
+      ctx.setLineDash([])
+      ctx.fillStyle = '#2563eb'
+      ctx.beginPath()
+      ctx.arc(start.x, start.y, 5, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
     if (cursorPlan && tool === 'room') {
       const preview = planToScreen(cursorPlan, offset, scale)
       ctx.strokeStyle = '#2563eb'
@@ -448,7 +528,7 @@ export function FloorPlanEditor() {
       ctx.strokeRect(preview.x - 20, preview.y - 16, 40, 32)
       ctx.setLineDash([])
     }
-  }, [plan, planWalls, offset, scale, selectedId, cursorPlan, tool])
+  }, [plan, planWalls, offset, scale, selectedId, selectedRoom, cursorPlan, tool, wallPlaceStart])
 
   useEffect(() => {
     draw()
@@ -459,6 +539,10 @@ export function FloorPlanEditor() {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [draw])
+
+  useEffect(() => {
+    setWallPlaceStart(null)
+  }, [tool])
 
   useEffect(() => {
     const isEditableTarget = (target: EventTarget | null) =>
@@ -480,8 +564,14 @@ export function FloorPlanEditor() {
         return
       }
 
+      if (e.key === 'Escape' && !isEditableTarget(e.target)) {
+        setWallPlaceStart(null)
+        return
+      }
+
       const pan = arrowPan[e.key]
       if (pan && !isEditableTarget(e.target)) {
+        if (wallDragIdRef.current || vertexDragIdRef.current || moveDragIdRef.current) return
         const currentOffset = offsetRef.current
         if (!currentOffset) return
         e.preventDefault()
@@ -550,17 +640,41 @@ export function FloorPlanEditor() {
     if (tool === 'select') {
       const id = hitTest(point)
       select(id)
-      if (id && isWallId(id)) {
-        const parsed = parseWallId(id)
-        const room = parsed ? findRoomByWallId(plan.rooms, id) : undefined
-        if (parsed && room) {
-          wallDragAnchorRef.current = createWallDragAnchor(room, parsed.wallIndex, point)
-        }
+      if (id && isVertexId(plan, id)) {
+        recordUndoSnapshot()
+        vertexDragIdRef.current = id
+        setVertexDragId(id)
+        setDragging(true)
+      } else if (id && isPlanWallId(plan, id)) {
+        recordUndoSnapshot()
+        wallDragAnchorRef.current = createWallDragAnchor(plan, id, point)
+        wallDragIdRef.current = id
         setWallDragId(id)
         setDragging(true)
       } else if (id && isMovable(id)) {
+        recordUndoSnapshot()
+        moveDragIdRef.current = id
         setMoveDragId(id)
         moveDragStartRef.current = point
+      }
+      return
+    }
+
+    if (tool === 'wall') {
+      const snapped = snapPlanPoint(plan, point)
+      if (!wallPlaceStart) {
+        setWallPlaceStart(snapped)
+        return
+      }
+      addWall(wallPlaceStart, snapped)
+      return
+    }
+
+    if (tool === 'delete') {
+      const id = hitTest(point)
+      if (id) {
+        select(id)
+        deleteSelected()
       }
       return
     }
@@ -582,7 +696,16 @@ export function FloorPlanEditor() {
     }
 
     const point = getPlanPoint(e)
+    if (tool === 'wall') {
+      setCursorPlan(snapPlanPoint(plan, point))
+      return
+    }
     setCursorPlan(point)
+
+    if (dragging && vertexDragId) {
+      moveVertex(vertexDragId, point)
+      return
+    }
 
     if (dragging && wallDragId && wallDragAnchorRef.current) {
       resizeWall(wallDragId, point, wallDragAnchorRef.current)
@@ -600,30 +723,36 @@ export function FloorPlanEditor() {
         moveActive = true
       }
       if (moveActive) {
-        moveSelected(point)
+        moveRoom(moveDragId, point)
       }
     }
   }
 
   const handleMouseUp = () => {
+    const hadGeometryDrag = wallDragIdRef.current || vertexDragIdRef.current
     setPanStart(null)
     setDragging(false)
+    moveDragIdRef.current = null
     setMoveDragId(null)
+    wallDragIdRef.current = null
     setWallDragId(null)
+    vertexDragIdRef.current = null
+    setVertexDragId(null)
     wallDragAnchorRef.current = null
     moveDragStartRef.current = null
+    if (hadGeometryDrag) finishGeometryEdit()
   }
 
   const getCanvasCursor = (): string => {
     if (panStart) return 'grabbing'
+    if (dragging && vertexDragId) return 'grabbing'
     if (dragging && wallDragId) {
-      const parsed = parseWallId(wallDragId)
-      const room = parsed ? findRoomByWallId(plan.rooms, wallDragId) : undefined
-      if (parsed && room) return wallDragCursor(parsed.wallIndex, room.rotation)
+      const wall = planWalls.find((w) => w.id === wallDragId)
+      if (wall) return wallDragCursor(wall)
     }
     if (dragging && moveDragId) return 'grabbing'
 
-    if (tool === 'room') return 'crosshair'
+    if (tool === 'room' || tool === 'wall') return 'crosshair'
 
     if (tool !== 'select') return 'default'
 
@@ -632,10 +761,11 @@ export function FloorPlanEditor() {
     if (cursorPlan) {
       const hoverId = hitTest(cursorPlan)
 
-      if (hoverId && isWallId(hoverId)) {
-        const parsed = parseWallId(hoverId)
-        const room = parsed ? findRoomByWallId(plan.rooms, hoverId) : undefined
-        if (parsed && room) return wallDragCursor(parsed.wallIndex, room.rotation)
+      if (hoverId && isVertexId(plan, hoverId)) return 'grab'
+
+      if (hoverId && isPlanWallId(plan, hoverId)) {
+        const wall = planWalls.find((w) => w.id === hoverId)
+        if (wall) return wallDragCursor(wall)
       }
 
       if (hoverId && isMovable(hoverId)) return 'grab'

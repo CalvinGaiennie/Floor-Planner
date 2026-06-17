@@ -5,9 +5,10 @@ import type { Tool, ViewMode } from '../types/floorPlan'
 import { workspaceCenter, WORKSPACE_SIZE } from '../utils/workspace'
 
 const TOOLS: { id: Tool; label: string; hint: string }[] = [
-  { id: 'select', label: 'Select', hint: 'Click a room or wall · drag walls to resize · drag rooms to move' },
+  { id: 'select', label: 'Select', hint: 'Drag corners or walls · Delete key removes selected wall or room' },
+  { id: 'wall', label: 'Wall', hint: 'Click two points to place a wall · snaps to existing corners' },
   { id: 'room', label: 'Insert Room', hint: 'Click on the plan to place a room' },
-  { id: 'delete', label: 'Delete', hint: 'Select item, press Delete' },
+  { id: 'delete', label: 'Delete', hint: 'Click a wall or room to delete it' },
 ]
 
 const VIEWS: { id: ViewMode; label: string }[] = [

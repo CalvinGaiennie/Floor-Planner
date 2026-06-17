@@ -1,5 +1,5 @@
 import { GRID_SIZE, type FloorPlan, type Point2D } from '../types/floorPlan'
-import { roomCorners } from './rooms'
+import { roomOutlinePoints } from './planModel'
 
 export const PLAN_AREA_MAX_WIDTH = 360
 export const PLAN_AREA_MAX_HEIGHT = 180
@@ -10,13 +10,11 @@ export interface WorkspaceSize {
   height: number
 }
 
-/** Fixed max plan workspace — always 360' wide × 180' tall. */
 export const WORKSPACE_SIZE: WorkspaceSize = {
   width: PLAN_AREA_MAX_WIDTH,
   height: PLAN_AREA_MAX_HEIGHT,
 }
 
-/** Scale needed to fit the full workspace inside the container. */
 export function computeFitScale(containerWidthPx: number, containerHeightPx: number): number {
   const padding = 0.92
   const workspacePxW = WORKSPACE_SIZE.width * PIXELS_PER_FOOT
@@ -80,16 +78,14 @@ function boundsFromPoints(points: Point2D[]): PlanBounds | null {
   }
 }
 
-/** Bounding box of all rooms. Returns null when the plan is empty. */
 export function computePlanContentBounds(plan: FloorPlan): PlanBounds | null {
   const points: Point2D[] = []
   for (const room of plan.rooms) {
-    points.push(...roomCorners(room))
+    points.push(...roomOutlinePoints(plan, room))
   }
   return boundsFromPoints(points)
 }
 
-/** Scale to fit a plan bounds rectangle inside the container. */
 export function computeFitScaleForBounds(
   containerWidthPx: number,
   containerHeightPx: number,
@@ -109,7 +105,6 @@ export function computeFitScaleForBounds(
   )
 }
 
-/** Pan offset so a plan point sits at the container center at the given scale. */
 export function offsetToCenterPlanPoint(
   containerWidthPx: number,
   containerHeightPx: number,

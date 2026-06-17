@@ -1,35 +1,55 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   type ReactNode,
 } from 'react'
-import { v4 as uuid } from 'uuid'
 import {
   createEmptyPlan,
-  DEFAULT_ROOM_DEPTH,
-  DEFAULT_ROOM_WIDTH,
-  DEFAULT_WALL_HEIGHT,
-  DEFAULT_WALL_THICKNESS,
-  MAX_ROOM_DIMENSION,
-  MIN_ROOM_DIMENSION,
   type FloorPlan,
   type Room,
   type Tool,
   type ViewMode,
 } from '../types/floorPlan'
-import { snapToGrid } from '../utils/imperial'
 import {
+  addWallBetweenPoints,
+  createRectangleRoomAt,
+  deleteRoom,
+  deleteWall,
+  dragWallPerpendicular,
+  duplicateRoom,
+  findRoomByVertexId,
   findRoomByWallId,
-  getPlanWalls,
-  isWallId,
-  nextRoomName,
-  resizeRoomByWallDrag,
+  isPlanWallId,
+  isVertexId,
+  lastCreatedRoom,
+  moveVertex,
+  roomCentroid,
+  resolveWalls,
+  sanitizePlan,
+  translateRoom,
+  updateRoomDefaults,
   type WallDragAnchor,
-} from '../utils/rooms'
+} from '../utils/planModel'
 import { loadPlan, savePlan } from '../utils/storage'
+import { snapToGrid } from '../utils/imperial'
+
+const MAX_UNDO_HISTORY = 50
+
+function clonePlan(plan: FloorPlan): FloorPlan {
+  return structuredClone(plan)
+}
+
+function isEditableTarget(target: EventTarget | null) {
+  return (
+    target instanceof Element &&
+    target.closest('input, textarea, select, [contenteditable="true"]') !== null
+  )
+}
 
 interface EditorState {
   plan: FloorPlan
@@ -39,9 +59,11 @@ interface EditorState {
   walkMode: boolean
 }
 
-type RoomPatch = Partial<
-  Pick<Room, 'name' | 'width' | 'depth' | 'wallHeight' | 'wallThickness' | 'position'>
->
+type RoomPatch = {
+  name?: string
+  wallHeight?: number
+  wallThickness?: number
+}
 
 type Action =
   | { type: 'SET_TOOL'; tool: Tool }
@@ -49,32 +71,33 @@ type Action =
   | { type: 'SET_WALK_MODE'; walkMode: boolean }
   | { type: 'SELECT'; id: string | null }
   | { type: 'SET_PLAN'; plan: FloorPlan }
+  | { type: 'RESTORE_PLAN'; plan: FloorPlan }
   | { type: 'ADD_ROOM'; point: { x: number; y: number } }
   | { type: 'UPDATE_ROOM'; id: string; patch: RoomPatch }
   | { type: 'DELETE_SELECTED' }
   | { type: 'DUPLICATE_ROOM'; id: string }
-  | { type: 'MOVE_SELECTED'; point: { x: number; y: number } }
+  | { type: 'MOVE_ROOM'; roomId: string; point: { x: number; y: number } }
   | { type: 'RESIZE_WALL'; wallId: string; point: { x: number; y: number }; anchor: WallDragAnchor }
+  | { type: 'MOVE_VERTEX'; vertexId: string; point: { x: number; y: number } }
+  | { type: 'ADD_WALL'; start: { x: number; y: number }; end: { x: number; y: number } }
+  | { type: 'FINISH_GEOMETRY_EDIT' }
+
+const PLAN_UNDO_ACTIONS = new Set<Action['type']>([
+  'SET_PLAN',
+  'ADD_ROOM',
+  'UPDATE_ROOM',
+  'DELETE_SELECTED',
+  'DUPLICATE_ROOM',
+  'MOVE_ROOM',
+  'RESIZE_WALL',
+  'MOVE_VERTEX',
+  'ADD_WALL',
+])
+
+const CONTINUOUS_UNDO_ACTIONS = new Set<Action['type']>(['MOVE_ROOM', 'RESIZE_WALL', 'MOVE_VERTEX'])
 
 function snapPoint(point: { x: number; y: number }) {
   return { x: snapToGrid(point.x), y: snapToGrid(point.y) }
-}
-
-function clampDimension(value: number): number {
-  return Math.min(MAX_ROOM_DIMENSION, Math.max(MIN_ROOM_DIMENSION, snapToGrid(value)))
-}
-
-function createRoomAt(point: { x: number; y: number }, rooms: Room[]): Room {
-  return {
-    id: uuid(),
-    name: nextRoomName(rooms),
-    position: snapPoint(point),
-    width: DEFAULT_ROOM_WIDTH,
-    depth: DEFAULT_ROOM_DEPTH,
-    wallHeight: DEFAULT_WALL_HEIGHT,
-    wallThickness: DEFAULT_WALL_THICKNESS,
-    rotation: 0,
-  }
 }
 
 function reducer(state: EditorState, action: Action): EditorState {
@@ -89,95 +112,91 @@ function reducer(state: EditorState, action: Action): EditorState {
       return { ...state, selectedId: action.id }
     case 'SET_PLAN':
       return { ...state, plan: action.plan, selectedId: null }
+    case 'RESTORE_PLAN':
+      return { ...state, plan: action.plan }
     case 'ADD_ROOM': {
-      const room = createRoomAt(action.point, state.plan.rooms)
+      const plan = createRectangleRoomAt(state.plan, snapPoint(action.point))
+      const room = lastCreatedRoom(plan)
       return {
         ...state,
-        plan: { ...state.plan, rooms: [...state.plan.rooms, room] },
-        selectedId: room.id,
+        plan,
+        selectedId: room?.id ?? null,
         tool: 'select',
       }
     }
     case 'UPDATE_ROOM': {
-      const patch = { ...action.patch }
-      if (patch.width !== undefined) patch.width = clampDimension(patch.width)
-      if (patch.depth !== undefined) patch.depth = clampDimension(patch.depth)
-      if (patch.wallHeight !== undefined) {
-        patch.wallHeight = Math.min(20, Math.max(7, snapToGrid(patch.wallHeight)))
-      }
-      if (patch.position) patch.position = snapPoint(patch.position)
       return {
         ...state,
-        plan: {
-          ...state.plan,
-          rooms: state.plan.rooms.map((room) =>
-            room.id === action.id ? { ...room, ...patch } : room,
-          ),
-        },
+        plan: updateRoomDefaults(state.plan, action.id, action.patch),
       }
     }
     case 'DELETE_SELECTED': {
       if (!state.selectedId) return state
       const id = state.selectedId
-      const room =
-        state.plan.rooms.find((r) => r.id === id) ??
-        (isWallId(id) ? findRoomByWallId(state.plan.rooms, id) : undefined)
-
-      if (!room) return { ...state, selectedId: null }
-
-      return {
-        ...state,
-        selectedId: null,
-        plan: {
-          ...state.plan,
-          rooms: state.plan.rooms.filter((r) => r.id !== room.id),
-        },
+      let nextState: EditorState
+      if (isPlanWallId(state.plan, id)) {
+        nextState = { ...state, selectedId: null, plan: deleteWall(state.plan, id) }
+      } else {
+        const room =
+          state.plan.rooms.find((r) => r.id === id) ??
+          findRoomByWallId(state.plan, id) ??
+          findRoomByVertexId(state.plan, id)
+        if (!room) return { ...state, selectedId: null }
+        nextState = { ...state, selectedId: null, plan: deleteRoom(state.plan, room.id) }
       }
+      return state.tool === 'delete' ? { ...nextState, tool: 'select' } : nextState
     }
     case 'DUPLICATE_ROOM': {
-      const source = state.plan.rooms.find((r) => r.id === action.id)
-      if (!source) return state
-      const duplicate: Room = {
-        ...source,
-        id: uuid(),
-        name: nextRoomName(state.plan.rooms),
-        position: snapPoint({
-          x: source.position.x + source.width + 1,
-          y: source.position.y,
-        }),
-      }
+      const plan = duplicateRoom(state.plan, action.id)
+      const room = lastCreatedRoom(plan)
       return {
         ...state,
-        plan: { ...state.plan, rooms: [...state.plan.rooms, duplicate] },
-        selectedId: duplicate.id,
+        plan,
+        selectedId: room?.id ?? null,
         tool: 'select',
       }
     }
-    case 'MOVE_SELECTED': {
-      if (!state.selectedId) return state
-      const point = snapPoint(action.point)
-      const id = state.selectedId
+    case 'MOVE_ROOM': {
+      const room = state.plan.rooms.find((r) => r.id === action.roomId)
+      if (!room) return state
+      const target = snapPoint(action.point)
+      const center = roomCentroid(state.plan, room)
+      const delta = { x: target.x - center.x, y: target.y - center.y }
       return {
         ...state,
-        plan: {
-          ...state.plan,
-          rooms: state.plan.rooms.map((r) => (r.id === id ? { ...r, position: point } : r)),
-        },
+        plan: translateRoom(state.plan, action.roomId, delta),
       }
     }
     case 'RESIZE_WALL': {
-      const roomId = action.wallId.replace(/-w\d+$/, '')
-      const target = state.plan.rooms.find((r) => r.id === roomId)
-      if (!target) return state
-
-      const updated = resizeRoomByWallDrag(target, action.point, action.anchor)
       return {
         ...state,
-        plan: {
-          ...state.plan,
-          rooms: state.plan.rooms.map((r) => (r.id === roomId ? updated : r)),
-        },
+        plan: dragWallPerpendicular(state.plan, action.wallId, action.point, action.anchor),
       }
+    }
+    case 'MOVE_VERTEX': {
+      return {
+        ...state,
+        plan: moveVertex(state.plan, action.vertexId, action.point),
+      }
+    }
+    case 'ADD_WALL': {
+      const beforeCount = state.plan.walls.length
+      const plan = addWallBetweenPoints(
+        state.plan,
+        snapPoint(action.start),
+        snapPoint(action.end),
+      )
+      if (plan.walls.length === beforeCount) return state
+      const wall = plan.walls[plan.walls.length - 1]
+      return {
+        ...state,
+        plan,
+        selectedId: wall?.id ?? state.selectedId,
+        tool: 'select',
+      }
+    }
+    case 'FINISH_GEOMETRY_EDIT': {
+      return { ...state, plan: sanitizePlan(state.plan) }
     }
     default:
       return state
@@ -195,11 +214,16 @@ interface FloorPlanContextValue {
   updateRoom: (id: string, patch: RoomPatch) => void
   deleteSelected: () => void
   duplicateRoom: (id: string) => void
-  moveSelected: (point: { x: number; y: number }) => void
+  moveRoom: (roomId: string, point: { x: number; y: number }) => void
   resizeWall: (wallId: string, point: { x: number; y: number }, anchor: WallDragAnchor) => void
+  moveVertex: (vertexId: string, point: { x: number; y: number }) => void
+  addWall: (start: { x: number; y: number }, end: { x: number; y: number }) => void
+  finishGeometryEdit: () => void
   newPlan: () => void
+  recordUndoSnapshot: () => void
+  undo: () => void
   selectedRoom: Room | null
-  planWalls: ReturnType<typeof getPlanWalls>
+  planWalls: ReturnType<typeof resolveWalls>
 }
 
 const FloorPlanContext = createContext<FloorPlanContextValue | null>(null)
@@ -213,19 +237,74 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     walkMode: false,
   })
 
+  const undoStackRef = useRef<FloorPlan[]>([])
+  const redoStackRef = useRef<FloorPlan[]>([])
+  const planRef = useRef(state.plan)
+  planRef.current = state.plan
+
+  const recordUndoSnapshot = useCallback(() => {
+    undoStackRef.current.push(clonePlan(planRef.current))
+    redoStackRef.current = []
+    if (undoStackRef.current.length > MAX_UNDO_HISTORY) {
+      undoStackRef.current.shift()
+    }
+  }, [])
+
+  const dispatchAction = useCallback(
+    (action: Action) => {
+      if (PLAN_UNDO_ACTIONS.has(action.type) && !CONTINUOUS_UNDO_ACTIONS.has(action.type)) {
+        recordUndoSnapshot()
+      }
+      dispatch(action)
+    },
+    [recordUndoSnapshot],
+  )
+
+  const undo = useCallback(() => {
+    const stack = undoStackRef.current
+    if (stack.length === 0) return
+    const previous = stack.pop()!
+    redoStackRef.current.push(clonePlan(planRef.current))
+    dispatch({ type: 'RESTORE_PLAN', plan: previous })
+  }, [])
+
   useEffect(() => {
     savePlan(state.plan)
   }, [state.plan])
 
-  const planWalls = useMemo(() => getPlanWalls(state.plan.rooms), [state.plan.rooms])
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isEditableTarget(e.target)) return
+      const mod = e.metaKey || e.ctrlKey
+      if (!mod || e.key.toLowerCase() !== 'z') return
+      e.preventDefault()
+      if (e.shiftKey) {
+        const stack = redoStackRef.current
+        if (stack.length === 0) return
+        const next = stack.pop()!
+        undoStackRef.current.push(clonePlan(planRef.current))
+        dispatch({ type: 'RESTORE_PLAN', plan: next })
+      } else {
+        undo()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [undo])
+
+  const planWalls = useMemo(() => resolveWalls(state.plan), [state.plan])
   const selectedRoom = useMemo(() => {
     const direct = state.plan.rooms.find((r) => r.id === state.selectedId)
     if (direct) return direct
-    if (state.selectedId && isWallId(state.selectedId)) {
-      return findRoomByWallId(state.plan.rooms, state.selectedId) ?? null
+    if (state.selectedId && isPlanWallId(state.plan, state.selectedId)) {
+      return findRoomByWallId(state.plan, state.selectedId) ?? null
+    }
+    if (state.selectedId && isVertexId(state.plan, state.selectedId)) {
+      return findRoomByVertexId(state.plan, state.selectedId) ?? null
     }
     return null
-  }, [state.plan.rooms, state.selectedId])
+  }, [state.plan, state.selectedId])
 
   const value = useMemo<FloorPlanContextValue>(
     () => ({
@@ -236,17 +315,23 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       setViewMode: (viewMode) => dispatch({ type: 'SET_VIEW_MODE', viewMode }),
       setWalkMode: (walkMode) => dispatch({ type: 'SET_WALK_MODE', walkMode }),
       select: (id) => dispatch({ type: 'SELECT', id }),
-      setPlan: (plan) => dispatch({ type: 'SET_PLAN', plan }),
-      addRoom: (point) => dispatch({ type: 'ADD_ROOM', point }),
-      updateRoom: (id, patch) => dispatch({ type: 'UPDATE_ROOM', id, patch }),
-      deleteSelected: () => dispatch({ type: 'DELETE_SELECTED' }),
-      duplicateRoom: (id) => dispatch({ type: 'DUPLICATE_ROOM', id }),
-      moveSelected: (point) => dispatch({ type: 'MOVE_SELECTED', point }),
+      setPlan: (plan) => dispatchAction({ type: 'SET_PLAN', plan }),
+      addRoom: (point) => dispatchAction({ type: 'ADD_ROOM', point }),
+      updateRoom: (id, patch) => dispatchAction({ type: 'UPDATE_ROOM', id, patch }),
+      deleteSelected: () => dispatchAction({ type: 'DELETE_SELECTED' }),
+      duplicateRoom: (id) => dispatchAction({ type: 'DUPLICATE_ROOM', id }),
+      moveRoom: (roomId, point) => dispatchAction({ type: 'MOVE_ROOM', roomId, point }),
       resizeWall: (wallId, point, anchor) =>
-        dispatch({ type: 'RESIZE_WALL', wallId, point, anchor }),
-      newPlan: () => dispatch({ type: 'SET_PLAN', plan: createEmptyPlan() }),
+        dispatchAction({ type: 'RESIZE_WALL', wallId, point, anchor }),
+      moveVertex: (vertexId, point) =>
+        dispatchAction({ type: 'MOVE_VERTEX', vertexId, point }),
+      addWall: (start, end) => dispatchAction({ type: 'ADD_WALL', start, end }),
+      finishGeometryEdit: () => dispatch({ type: 'FINISH_GEOMETRY_EDIT' }),
+      newPlan: () => dispatchAction({ type: 'SET_PLAN', plan: createEmptyPlan() }),
+      recordUndoSnapshot,
+      undo,
     }),
-    [state, planWalls, selectedRoom],
+    [state, planWalls, selectedRoom, recordUndoSnapshot, undo],
   )
 
   return <FloorPlanContext.Provider value={value}>{children}</FloorPlanContext.Provider>
