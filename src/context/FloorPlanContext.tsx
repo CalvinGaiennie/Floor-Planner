@@ -182,6 +182,12 @@ const CONTINUOUS_UNDO_ACTIONS = new Set<Action['type']>([
   'MOVE_DOOR',
 ])
 
+const CLOUD_SAVE_CHANGE_ACTIONS = new Set<Action['type']>([
+  ...PLAN_UNDO_ACTIONS,
+  'SET_PLAN_NAME',
+  'SET_PLAN_NOTES',
+])
+
 function snapPoint(point: { x: number; y: number }) {
   return { x: snapToGrid(point.x), y: snapToGrid(point.y) }
 }
@@ -424,6 +430,10 @@ interface FloorPlanContextValue {
   planReady: boolean
   cloudAlert: CloudSyncAlert | null
   firebaseProjectId: string | null
+  cloudSyncActive: boolean
+  unsavedCloudChanges: number
+  cloudSaveInFlight: boolean
+  forceCloudSave: () => Promise<boolean>
 }
 
 const FloorPlanContext = createContext<FloorPlanContextValue | null>(null)
@@ -445,6 +455,10 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     () => loadFurnitureCatalog(),
   )
   const [cloudAlert, setCloudAlert] = useState<CloudSyncAlert | null>(null)
+  const [unsavedCloudChanges, setUnsavedCloudChanges] = useState(0)
+  const [cloudSaveInFlight, setCloudSaveInFlight] = useState(false)
+
+  const cloudSyncActive = Boolean(user && isFirebaseConfigured())
 
   const reportCloudError = useCallback(
     (
@@ -481,42 +495,70 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   const saveGenerationRef = useRef(0)
   const planSummariesRef = useRef(planSummaries)
   planSummariesRef.current = planSummaries
+  const continuousGestureRef = useRef(false)
+
+  const resetUnsavedCloudChanges = useCallback(() => {
+    setUnsavedCloudChanges(0)
+  }, [])
+
+  const bumpUnsavedCloudChanges = useCallback(() => {
+    if (!user || !isFirebaseConfigured()) return
+    setUnsavedCloudChanges((count) => count + 1)
+  }, [user])
 
   const persistPlanToCloud = useCallback(
-    async (plan: FloorPlan, planId: string): Promise<boolean> => {
+    async (
+      plan: FloorPlan,
+      planId: string,
+      options?: { force?: boolean },
+    ): Promise<boolean> => {
       if (!user || !planId || !isFirebaseConfigured()) return true
 
       const generation = ++saveGenerationRef.current
+      setCloudSaveInFlight(true)
       try {
         await savePlanToFirestore(user.uid, planId, plan)
         if (generation === saveGenerationRef.current) {
           consecutiveSaveFailuresRef.current = 0
           setCloudAlert(null)
+          resetUnsavedCloudChanges()
         }
         return true
       } catch (err) {
         if (generation === saveGenerationRef.current) {
           consecutiveSaveFailuresRef.current += 1
-          if (consecutiveSaveFailuresRef.current >= 2) {
+          if (options?.force || consecutiveSaveFailuresRef.current >= 2) {
             reportCloudError(
               'save',
-              'Your last two changes could not be saved to the cloud.',
+              options?.force
+                ? 'Force save failed — your plan could not be saved to the cloud.'
+                : 'Your last two changes could not be saved to the cloud.',
               err,
               planId,
             )
           }
         }
         return false
+      } finally {
+        if (generation === saveGenerationRef.current) {
+          setCloudSaveInFlight(false)
+        }
       }
     },
-    [user, reportCloudError],
+    [user, reportCloudError, resetUnsavedCloudChanges],
   )
 
   const flushCloudSave = useCallback(async () => {
     const planId = activePlanIdRef.current
-    if (!planId) return
-    await persistPlanToCloud(planRef.current, planId)
+    if (!planId) return false
+    return await persistPlanToCloud(planRef.current, planId)
   }, [persistPlanToCloud])
+
+  const forceCloudSave = useCallback(async (): Promise<boolean> => {
+    const planId = activePlanIdRef.current
+    if (!user || !planId || !isFirebaseConfigured()) return false
+    return await persistPlanToCloud(planRef.current, planId, { force: true })
+  }, [user, persistPlanToCloud])
 
   const resetUndoStacks = useCallback(() => {
     undoStackRef.current = []
@@ -582,6 +624,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
           consecutiveSaveFailuresRef.current = 0
           saveGenerationRef.current = 0
           setCloudAlert(null)
+          resetUnsavedCloudChanges()
+          continuousGestureRef.current = false
           skipNextCloudSaveRef.current = true
           setPlanSummaries(session.plans)
           setActivePlanId(session.activePlanId)
@@ -589,6 +633,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
         } else {
           const session = getMemoryPlansSession()
           if (cancelled) return
+          resetUnsavedCloudChanges()
+          continuousGestureRef.current = false
           skipNextCloudSaveRef.current = true
           setPlanSummaries(session.plans)
           setActivePlanId(session.activePlanId)
@@ -607,6 +653,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
         }
         if (!cancelled) {
           const session = getMemoryPlansSession()
+          resetUnsavedCloudChanges()
+          continuousGestureRef.current = false
           skipNextCloudSaveRef.current = true
           setPlanSummaries(session.plans)
           setActivePlanId(session.activePlanId)
@@ -621,7 +669,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [user, authReady, resetUndoStacks, reportCloudError])
+  }, [user, authReady, resetUndoStacks, reportCloudError, resetUnsavedCloudChanges])
 
   const recordUndoSnapshot = useCallback(() => {
     undoStackRef.current.push(clonePlan(planRef.current))
@@ -633,12 +681,23 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
 
   const dispatchAction = useCallback(
     (action: Action) => {
+      if (cloudSyncActive && CLOUD_SAVE_CHANGE_ACTIONS.has(action.type)) {
+        if (CONTINUOUS_UNDO_ACTIONS.has(action.type)) {
+          if (!continuousGestureRef.current) {
+            continuousGestureRef.current = true
+            bumpUnsavedCloudChanges()
+          }
+        } else {
+          continuousGestureRef.current = false
+          bumpUnsavedCloudChanges()
+        }
+      }
       if (PLAN_UNDO_ACTIONS.has(action.type) && !CONTINUOUS_UNDO_ACTIONS.has(action.type)) {
         recordUndoSnapshot()
       }
       dispatch(action)
     },
-    [recordUndoSnapshot],
+    [cloudSyncActive, bumpUnsavedCloudChanges, recordUndoSnapshot],
   )
 
   const undo = useCallback(() => {
@@ -646,8 +705,10 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     if (stack.length === 0) return
     const previous = stack.pop()!
     redoStackRef.current.push(clonePlan(planRef.current))
+    continuousGestureRef.current = false
+    bumpUnsavedCloudChanges()
     dispatch({ type: 'RESTORE_PLAN', plan: previous })
-  }, [])
+  }, [bumpUnsavedCloudChanges])
 
   useEffect(() => {
     if (!planReady || !activePlanId) return
@@ -663,11 +724,13 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
 
     if (skipNextCloudSaveRef.current) {
       skipNextCloudSaveRef.current = false
+      resetUnsavedCloudChanges()
+      continuousGestureRef.current = false
       return
     }
 
     persistPlanToCloud(planRef.current, activePlanId)
-  }, [state.plan, user, planReady, activePlanId, persistPlanToCloud])
+  }, [state.plan, user, planReady, activePlanId, persistPlanToCloud, resetUnsavedCloudChanges])
 
   useEffect(() => {
     const onPageHide = () => {
@@ -698,6 +761,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
         if (stack.length === 0) return
         const next = stack.pop()!
         undoStackRef.current.push(clonePlan(planRef.current))
+        continuousGestureRef.current = false
+        bumpUnsavedCloudChanges()
         dispatch({ type: 'RESTORE_PLAN', plan: next })
       } else {
         undo()
@@ -706,7 +771,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [undo])
+  }, [undo, bumpUnsavedCloudChanges])
 
   const planWalls = useMemo(() => resolveWalls(state.plan), [state.plan])
   const selectedRoom = useMemo(() => {
@@ -756,13 +821,15 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     }
 
     skipNextCloudSaveRef.current = true
+    resetUnsavedCloudChanges()
+    continuousGestureRef.current = false
     setPlanSummaries((prev) =>
       prev.some((p) => p.id === planId) ? prev : [...prev, { id: planId!, name: plan.name }],
     )
     setActivePlanId(planId)
     dispatch({ type: 'SET_PLAN', plan })
     resetUndoStacks()
-  }, [flushCloudSave, user, resetUndoStacks])
+  }, [flushCloudSave, user, resetUndoStacks, resetUnsavedCloudChanges])
 
   const switchPlan = useCallback(
     async (planId: string) => {
@@ -806,6 +873,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       }
 
       skipNextCloudSaveRef.current = true
+      resetUnsavedCloudChanges()
+      continuousGestureRef.current = false
       setActivePlanId(planId)
       dispatch({
         type: 'SET_PLAN',
@@ -813,7 +882,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       })
       resetUndoStacks()
     },
-    [flushCloudSave, user, resetUndoStacks, reportCloudError],
+    [flushCloudSave, user, resetUndoStacks, reportCloudError, resetUnsavedCloudChanges],
   )
 
   const deleteCurrentPlan = useCallback(async () => {
@@ -853,6 +922,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     }
 
     skipNextCloudSaveRef.current = true
+    resetUnsavedCloudChanges()
+    continuousGestureRef.current = false
     setPlanSummaries(remaining)
     setActivePlanId(nextId)
     if (!user || !isFirebaseConfigured()) {
@@ -860,7 +931,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     }
     dispatch({ type: 'SET_PLAN', plan: plan ?? createEmptyPlan(remaining[0].name) })
     resetUndoStacks()
-  }, [flushCloudSave, user, resetUndoStacks])
+  }, [flushCloudSave, user, resetUndoStacks, resetUnsavedCloudChanges])
 
   const updateCatalogEntry = useCallback(
     (
@@ -969,7 +1040,10 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       moveVertex: (vertexId, point) =>
         dispatchAction({ type: 'MOVE_VERTEX', vertexId, point }),
       addWall: (start, end) => dispatchAction({ type: 'ADD_WALL', start, end }),
-      finishGeometryEdit: () => dispatch({ type: 'FINISH_GEOMETRY_EDIT' }),
+      finishGeometryEdit: () => {
+        continuousGestureRef.current = false
+        dispatch({ type: 'FINISH_GEOMETRY_EDIT' })
+      },
       createNewPlan,
       switchPlan,
       deleteCurrentPlan,
@@ -982,6 +1056,10 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       planReady,
       cloudAlert,
       firebaseProjectId: getFirebaseProjectId(),
+      cloudSyncActive,
+      unsavedCloudChanges,
+      cloudSaveInFlight,
+      forceCloudSave,
     }),
     [
       state,
@@ -1009,6 +1087,10 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       moveDoorOnPlan,
       rotateSelected,
       cloudAlert,
+      cloudSyncActive,
+      unsavedCloudChanges,
+      cloudSaveInFlight,
+      forceCloudSave,
     ],
   )
 

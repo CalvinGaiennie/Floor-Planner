@@ -370,19 +370,67 @@ body.project-notes-resizing {
   justify-content: center;
   width: 40px;
   height: 40px;
-  border: 1px solid #7f1d1d;
+  border: 1px solid #334155;
   border-radius: 10px;
-  background: rgba(69, 10, 10, 0.94);
-  color: #fca5a5;
+  background: rgba(30, 41, 59, 0.94);
+  color: #cbd5e1;
   cursor: pointer;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
 .workspace-alerts-fab:hover {
+  background: rgba(51, 65, 85, 0.94);
+  color: #f1f5f9;
+  border-color: #475569;
+}
+
+.workspace-alerts-fab-error {
+  border-color: #7f1d1d;
+  background: rgba(69, 10, 10, 0.94);
+  color: #fca5a5;
+}
+
+.workspace-alerts-fab-error:hover {
   background: rgba(127, 29, 29, 0.94);
   color: #fecaca;
   border-color: #b91c1c;
+}
+
+.workspace-alerts-fab-error .workspace-alerts-fab-badge {
+  background: #ef4444;
+}
+
+.workspace-alerts-fab-pending {
+  border-color: #92400e;
+  background: rgba(69, 45, 10, 0.94);
+  color: #fcd34d;
+}
+
+.workspace-alerts-fab-pending:hover {
+  background: rgba(120, 53, 15, 0.94);
+  color: #fde68a;
+  border-color: #b45309;
+}
+
+.workspace-alerts-fab-pending .workspace-alerts-fab-badge {
+  background: #f59e0b;
+}
+
+.workspace-alerts-fab-saved .workspace-alerts-fab-badge {
+  background: #22c55e;
+}
+
+.workspace-alerts-fab-saved {
+  border-color: #14532d;
+  background: rgba(20, 50, 30, 0.94);
+  color: #86efac;
+}
+
+.workspace-alerts-fab-saved:hover {
+  background: rgba(22, 78, 46, 0.94);
+  color: #bbf7d0;
+  border-color: #166534;
 }
 
 .workspace-alerts-fab.hidden {
@@ -471,6 +519,110 @@ body.project-notes-resizing {
   gap: 8px;
   padding: 10px;
   overflow-y: auto;
+}
+
+.workspace-save-status {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.workspace-save-status-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+.workspace-save-status-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.workspace-save-status-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.workspace-save-status-message {
+  margin: 0;
+  padding: 0 10px 8px;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.workspace-save-status-actions {
+  padding: 0 10px 10px;
+}
+
+.workspace-save-status-force {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.55);
+  color: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.workspace-save-status-force:hover:not(:disabled) {
+  background: rgba(30, 41, 59, 0.85);
+  border-color: rgba(203, 213, 225, 0.55);
+}
+
+.workspace-save-status-force:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.workspace-save-status-force:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+.workspace-save-status-saved {
+  border: 1px solid rgba(134, 239, 172, 0.35);
+  background: rgba(34, 197, 94, 0.08);
+  color: #86efac;
+}
+
+.workspace-save-status-saved .workspace-save-status-count {
+  background: #166534;
+  color: #f0fdf4;
+}
+
+.workspace-save-status-saving {
+  border: 1px solid rgba(147, 197, 253, 0.35);
+  background: rgba(59, 130, 246, 0.08);
+  color: #93c5fd;
+}
+
+.workspace-save-status-saving .workspace-save-status-count {
+  background: #1d4ed8;
+  color: #eff6ff;
+}
+
+.workspace-save-status-pending {
+  border: 1px solid rgba(252, 211, 77, 0.35);
+  background: rgba(245, 158, 11, 0.08);
+  color: #fcd34d;
+}
+
+.workspace-save-status-pending .workspace-save-status-count {
+  background: #b45309;
+  color: #fffbeb;
 }
 
 .workspace-alert-item {

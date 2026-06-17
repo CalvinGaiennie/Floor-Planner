@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useFloorPlan } from '../context/FloorPlanContext'
+import { CloudSaveStatus } from './CloudSaveStatus'
 import {
   buildAlertDiagnostics,
   cloudAlertTitle,
@@ -92,7 +93,7 @@ function buildAlerts(
   return alerts
 }
 
-function AlertsIcon() {
+function SaveStatusIcon() {
   return (
     <svg
       className="workspace-alerts-fab-icon"
@@ -103,7 +104,14 @@ function AlertsIcon() {
       aria-hidden="true"
     >
       <path
-        d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"
+        d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M17 21v-8H7v8M7 3v5h8"
         stroke="currentColor"
         strokeWidth="1.75"
         strokeLinecap="round"
@@ -149,7 +157,12 @@ function CollapsibleAlert({
 }
 
 export function WorkspaceAlerts() {
-  const { cloudAlert, firebaseProjectId } = useFloorPlan()
+  const {
+    cloudAlert,
+    firebaseProjectId,
+    cloudSyncActive,
+    unsavedCloudChanges,
+  } = useFloorPlan()
   const { user, firebaseEnabled, authError } = useAuth()
   const browserOnline = useBrowserOnline()
   const [open, setOpen] = useState(() => localStorage.getItem(ALERTS_OPEN_KEY) === '1')
@@ -165,11 +178,17 @@ export function WorkspaceAlerts() {
     cloudAlert,
   )
 
+  const panelVisible = cloudSyncActive || alerts.length > 0
+  const fabBadge =
+    unsavedCloudChanges > 0 ? unsavedCloudChanges : alerts.length > 0 ? alerts.length : null
+  const fabTone =
+    alerts.length > 0 ? 'error' : unsavedCloudChanges > 0 ? 'pending' : 'saved'
+
   useEffect(() => {
     localStorage.setItem(ALERTS_OPEN_KEY, open ? '1' : '0')
   }, [open])
 
-  if (alerts.length === 0) return null
+  if (!panelVisible) return null
 
   const toggleExpanded = (id: string) => {
     setExpandedIds((prev) => {
@@ -184,30 +203,37 @@ export function WorkspaceAlerts() {
     <div className="workspace-alerts-root">
       <button
         type="button"
-        className={`workspace-alerts-fab${open ? ' hidden' : ''}`}
-        aria-label={`${alerts.length} alert${alerts.length === 1 ? '' : 's'}. Open alerts.`}
-        title="Alerts — click to open"
+        className={`workspace-alerts-fab workspace-alerts-fab-${fabTone}${open ? ' hidden' : ''}`}
+        aria-label={
+          fabBadge
+            ? `${fabBadge} item${fabBadge === 1 ? '' : 's'} need attention. Open status.`
+            : 'Open cloud status and alerts'
+        }
+        title="Cloud save status — click to open"
         onClick={() => setOpen(true)}
       >
-        <AlertsIcon />
-        <span className="workspace-alerts-fab-badge" aria-hidden="true">{alerts.length}</span>
+        <SaveStatusIcon />
+        {fabBadge !== null && (
+          <span className="workspace-alerts-fab-badge" aria-hidden="true">{fabBadge}</span>
+        )}
       </button>
 
       {open && (
-        <aside className="workspace-alerts-panel" aria-label="Alerts">
+        <aside className="workspace-alerts-panel" aria-label="Status and alerts">
           <header className="workspace-alerts-header">
-            <h2>Alerts</h2>
+            <h2>Status</h2>
             <button
               type="button"
               className="workspace-alerts-collapse"
               onClick={() => setOpen(false)}
-              aria-label="Collapse alerts"
+              aria-label="Collapse status panel"
               title="Collapse"
             >
               ›
             </button>
           </header>
           <div className="workspace-alerts-body" role="status" aria-live="polite">
+            <CloudSaveStatus />
             {alerts.map((alert) => (
               <CollapsibleAlert
                 key={alert.id}
