@@ -46,6 +46,7 @@ const FURNITURE_COLORS: Record<FurnitureCategory, { fill: string; stroke: string
   bed: { fill: 'rgba(180, 83, 9, 0.38)', stroke: '#b45309', label: '#92400e' },
   sofa: { fill: 'rgba(99, 102, 241, 0.38)', stroke: '#6366f1', label: '#4338ca' },
   chair: { fill: 'rgba(16, 185, 129, 0.38)', stroke: '#10b981', label: '#047857' },
+  table: { fill: 'rgba(120, 53, 15, 0.38)', stroke: '#92400e', label: '#78350f' },
   armchair: { fill: 'rgba(249, 115, 22, 0.38)', stroke: '#f97316', label: '#c2410c' },
   sink: { fill: 'rgba(6, 182, 212, 0.38)', stroke: '#06b6d4', label: '#0e7490' },
   toilet: { fill: 'rgba(167, 139, 250, 0.38)', stroke: '#a78bfa', label: '#6d28d9' },

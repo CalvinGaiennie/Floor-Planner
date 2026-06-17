@@ -52,6 +52,8 @@ export interface Door {
   offset: number
   width: number
   height: number
+  /** 0–3: hinge side and swing direction around the wall. */
+  swingMode?: number
 }
 
 export interface FloorPlan {

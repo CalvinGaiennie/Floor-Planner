@@ -10,6 +10,7 @@ const CATEGORY_ORDER: FurnitureCategory[] = [
   'bed',
   'sofa',
   'chair',
+  'table',
   'armchair',
   'sink',
   'toilet',

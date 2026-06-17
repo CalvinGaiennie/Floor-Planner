@@ -2,6 +2,7 @@ export type FurnitureCategory =
   | 'bed'
   | 'sofa'
   | 'chair'
+  | 'table'
   | 'armchair'
   | 'sink'
   | 'toilet'

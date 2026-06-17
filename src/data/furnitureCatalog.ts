@@ -19,6 +19,18 @@ export const DEFAULT_FURNITURE_CATALOG: FurnitureCatalogEntry[] = [
   // Chairs
   { id: 'chair-dining', label: 'Dining chair', category: 'chair', width: 2, depth: 2, height: 3, keywords: ['dining', 'chair'] },
   { id: 'chair-office', label: 'Office chair', category: 'chair', width: 2.5, depth: 2.5, height: 3.5, keywords: ['office', 'chair', 'desk'] },
+  // Tables
+  { id: 'table-side', label: 'Side table', category: 'table', width: 2, depth: 2, height: 2.5, keywords: ['side', 'end', 'table'] },
+  { id: 'table-coffee-small', label: 'Small coffee table', category: 'table', width: 3, depth: 2, height: 1.5, keywords: ['coffee', 'table', 'small', 'living'] },
+  { id: 'table-coffee', label: 'Coffee table', category: 'table', width: 4, depth: 2, height: 1.5, keywords: ['coffee', 'table', 'living'] },
+  { id: 'table-coffee-large', label: 'Large coffee table', category: 'table', width: 5, depth: 2.5, height: 1.5, keywords: ['coffee', 'table', 'large', 'living'] },
+  { id: 'table-desk-small', label: 'Small desk', category: 'table', width: 4, depth: 2, height: 2.5, keywords: ['desk', 'table', 'office', 'small'] },
+  { id: 'table-desk', label: 'Desk', category: 'table', width: 5, depth: 2.5, height: 2.5, keywords: ['desk', 'table', 'office', 'work'] },
+  { id: 'table-console', label: 'Console table', category: 'table', width: 5, depth: 1.5, height: 2.5, keywords: ['console', 'table', 'entry', 'hall'] },
+  { id: 'table-dining-4', label: '4′ dining table', category: 'table', width: 4, depth: 3, height: 2.5, keywords: ['dining', 'table', '4', 'kitchen'] },
+  { id: 'table-dining-5', label: '5′ dining table', category: 'table', width: 5, depth: 3.5, height: 2.5, keywords: ['dining', 'table', '5', 'kitchen'] },
+  { id: 'table-dining-6', label: '6′ dining table', category: 'table', width: 6, depth: 3.5, height: 2.5, keywords: ['dining', 'table', '6', 'kitchen'] },
+  { id: 'table-dining-8', label: '8′ dining table', category: 'table', width: 8, depth: 3.5, height: 2.5, keywords: ['dining', 'table', '8', 'kitchen', 'large'] },
   // Armchairs
   { id: 'armchair-standard', label: 'Armchair', category: 'armchair', width: 3, depth: 3, height: 3, keywords: ['armchair', 'chair'] },
   { id: 'armchair-recliner', label: 'Recliner', category: 'armchair', width: 3.5, depth: 3.5, height: 3.5, keywords: ['recliner', 'armchair'] },
@@ -108,6 +120,7 @@ export const FURNITURE_CATEGORY_LABELS: Record<FurnitureCatalogEntry['category']
   bed: 'Beds',
   sofa: 'Sofas',
   chair: 'Chairs',
+  table: 'Tables',
   armchair: 'Armchairs',
   sink: 'Sinks',
   toilet: 'Toilets',

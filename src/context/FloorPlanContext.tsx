@@ -68,6 +68,7 @@ import {
   deleteDoor,
   isDoorId,
   moveDoor,
+  rotateDoorSwing,
 } from '../utils/doors'
 import {
   loadFurnitureCatalog,
@@ -141,6 +142,7 @@ type Action =
   | { type: 'MOVE_DOOR'; id: string; point: { x: number; y: number } }
   | { type: 'ROTATE_ROOM'; roomId: string; deltaRadians: number }
   | { type: 'ROTATE_FURNITURE'; id: string; deltaRadians: number }
+  | { type: 'ROTATE_DOOR'; id: string; direction: 'cw' | 'ccw' }
   | { type: 'SET_PLACEMENT_CATALOG_ID'; catalogId: string | null }
   | { type: 'FINISH_GEOMETRY_EDIT' }
 
@@ -160,6 +162,7 @@ const PLAN_UNDO_ACTIONS = new Set<Action['type']>([
   'MOVE_DOOR',
   'ROTATE_ROOM',
   'ROTATE_FURNITURE',
+  'ROTATE_DOOR',
 ])
 
 const CONTINUOUS_UNDO_ACTIONS = new Set<Action['type']>([
@@ -335,6 +338,12 @@ function reducer(state: EditorState, action: Action): EditorState {
       return {
         ...state,
         plan: rotateFurniture(state.plan, action.id, action.deltaRadians),
+      }
+    }
+    case 'ROTATE_DOOR': {
+      return {
+        ...state,
+        plan: rotateDoorSwing(state.plan, action.id, action.direction),
       }
     }
     case 'SET_PLACEMENT_CATALOG_ID': {
@@ -847,6 +856,10 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
 
   const rotateSelected = useCallback(
     (direction: 'cw' | 'ccw') => {
+      if (state.selectedId && isDoorId(state.plan, state.selectedId)) {
+        dispatchAction({ type: 'ROTATE_DOOR', id: state.selectedId, direction })
+        return
+      }
       const delta = direction === 'cw' ? ROTATE_STEP_RADIANS : -ROTATE_STEP_RADIANS
       if (state.selectedId && isFurnitureId(state.plan, state.selectedId)) {
         dispatchAction({ type: 'ROTATE_FURNITURE', id: state.selectedId, deltaRadians: delta })

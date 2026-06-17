@@ -144,6 +144,7 @@ export function addDoorAtPoint(
     offset,
     width,
     height: DEFAULT_DOOR_HEIGHT,
+    swingMode: 0,
   }
 
   return { ...plan, doors: [...plan.doors, door] }
@@ -171,6 +172,22 @@ export function deleteDoor(plan: FloorPlan, id: string): FloorPlan {
   return { ...plan, doors: plan.doors.filter((d) => d.id !== id) }
 }
 
+export function rotateDoorSwing(
+  plan: FloorPlan,
+  id: string,
+  direction: 'cw' | 'ccw',
+): FloorPlan {
+  const door = getDoor(plan, id)
+  if (!door) return plan
+  const current = normalizeSwingMode(door.swingMode ?? 0)
+  const delta = direction === 'cw' ? 1 : -1
+  const swingMode = normalizeSwingMode(current + delta)
+  return {
+    ...plan,
+    doors: plan.doors.map((d) => (d.id === id ? { ...d, swingMode } : d)),
+  }
+}
+
 export function normalizeDoorsList(raw: unknown): Door[] {
   if (!Array.isArray(raw)) return []
   return raw
@@ -193,7 +210,36 @@ export function normalizeDoorsList(raw: unknown): Door[] {
           : DEFAULT_DOOR_WIDTH,
       height:
         typeof item.height === 'number' && item.height > 0 ? item.height : DEFAULT_DOOR_HEIGHT,
+      swingMode: normalizeSwingMode(item.swingMode),
     }))
+}
+
+export function doorSwingLabel(swingMode: number): string {
+  switch (swingMode % 4) {
+    case 0:
+      return 'Hinge at start'
+    case 1:
+      return 'Hinge at end'
+    case 2:
+      return 'Hinge at end, flip'
+    case 3:
+      return 'Hinge at start, flip'
+    default:
+      return 'Hinge at start'
+  }
+}
+
+function normalizeSwingMode(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0
+  return ((Math.round(value) % 4) + 4) % 4
+}
+
+function swingParams(swingMode: number): { hingeAtStart: boolean; swingLeft: boolean } {
+  const mode = normalizeSwingMode(swingMode)
+  return {
+    hingeAtStart: mode === 0 || mode === 3,
+    swingLeft: mode === 0 || mode === 1,
+  }
 }
 
 /** Hinge point and swing arc for 2D plan symbols. */
@@ -201,10 +247,14 @@ export function doorSwingGeometry(
   wall: Wall,
   door: Door,
 ): { hinge: Point2D; leafEnd: Point2D; arcStart: number; arcEnd: number } {
-  const hingeOffset = door.offset - door.width / 2
+  const { hingeAtStart, swingLeft } = swingParams(door.swingMode ?? 0)
+  const hingeOffset = hingeAtStart
+    ? door.offset - door.width / 2
+    : door.offset + door.width / 2
   const hinge = pointOnWall(wall, hingeOffset)
   const angle = wallAngle(wall)
-  const swingAngle = angle + Math.PI / 2
+  const perpSign = swingLeft ? 1 : -1
+  const swingAngle = angle + perpSign * (Math.PI / 2)
   const leafEnd = {
     x: hinge.x + Math.cos(swingAngle) * door.width,
     y: hinge.y + Math.sin(swingAngle) * door.width,

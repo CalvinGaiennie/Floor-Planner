@@ -64,6 +64,7 @@ const FURNITURE_3D_COLORS: Record<FurnitureCategory, string> = {
   bed: '#d97706',
   sofa: '#818cf8',
   chair: '#34d399',
+  table: '#b45309',
   armchair: '#fb923c',
   sink: '#22d3ee',
   toilet: '#c4b5fd',

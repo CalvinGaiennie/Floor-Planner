@@ -9,6 +9,7 @@ const FURNITURE_CATEGORIES = new Set<FurnitureCategory>([
   'bed',
   'sofa',
   'chair',
+  'table',
   'armchair',
   'sink',
   'toilet',
