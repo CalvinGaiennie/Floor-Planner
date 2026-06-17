@@ -75,13 +75,14 @@ import {
   createPlanInFirestore,
   deletePlanFromFirestore,
   loadPlanFromFirestore,
+  loadPlanFromFirestoreServer,
   loadMasterNoteFromFirestore,
   loadUserPlansSession,
   saveMasterNoteToFirestore,
   savePlanToFirestore,
   setActivePlanIdInFirestore,
 } from '../services/firestorePlans'
-import { isFirebaseConfigured } from '../lib/firebase'
+import { isFirebaseConfigured, getFirebaseProjectId } from '../lib/firebase'
 
 const MAX_UNDO_HISTORY = 50
 
@@ -357,6 +358,7 @@ interface FloorPlanContextValue {
   planReady: boolean
   syncError: string | null
   refreshFromCloud: () => Promise<void>
+  firebaseProjectId: string | null
 }
 
 const FloorPlanContext = createContext<FloorPlanContextValue | null>(null)
@@ -551,8 +553,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
 
     if (cloudSaveTimerRef.current) clearTimeout(cloudSaveTimerRef.current)
     cloudSaveTimerRef.current = setTimeout(() => {
-      savePlanToFirestore(user.uid, activePlanId, state.plan).catch(() => {
-        // Keep local copy; cloud sync will retry on next edit.
+      savePlanToFirestore(user.uid, activePlanId, planRef.current).catch(() => {
+        setSyncError('Could not save to the cloud. Try Account → Refresh from cloud.')
       })
     }, 1500)
   }, [state.plan, user, planReady, activePlanId])
@@ -657,20 +659,27 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      let plan: FloorPlan | null = loadPlanForId(planId)
+      let plan: FloorPlan | null = null
 
       if (user && isFirebaseConfigured()) {
         try {
-          const cloudPlan = await loadPlanFromFirestore(user.uid, planId)
-          if (cloudPlan) {
-            plan = cloudPlan
-            mirrorPlanLocally(planId, cloudPlan)
+          plan = await loadPlanFromFirestoreServer(user.uid, planId)
+          if (!plan) {
+            setSyncError('That plan was not found in the cloud.')
+            plan = createEmptyPlan(
+              planSummariesRef.current.find((p) => p.id === planId)?.name ?? 'Untitled',
+            )
+          } else {
+            mirrorPlanLocally(planId, plan)
+            setSyncError(null)
           }
           await setActivePlanIdInFirestore(user.uid, planId)
         } catch {
-          // Use local copy when cloud load fails.
+          setSyncError('Could not load that plan from the cloud.')
+          return
         }
       } else {
+        plan = loadPlanForId(planId)
         saveActivePlanIdLocal(planId)
       }
 
@@ -853,6 +862,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       planReady,
       syncError,
       refreshFromCloud,
+      firebaseProjectId: getFirebaseProjectId(),
     }),
     [
       state,
@@ -866,18 +876,17 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       recordUndoSnapshot,
       undo,
       planReady,
-    createNewPlan,
-    switchPlan,
-    deleteCurrentPlan,
-    dispatchAction,
-    refreshFromCloud,
-    setMasterNote,
+      createNewPlan,
+      switchPlan,
+      deleteCurrentPlan,
+      dispatchAction,
+      refreshFromCloud,
+      setMasterNote,
       updateCatalogEntry,
       setPlacementCatalogId,
       placeFurniture,
       moveFurnitureOnPlan,
       rotateSelected,
-      refreshFromCloud,
       syncError,
     ],
   )

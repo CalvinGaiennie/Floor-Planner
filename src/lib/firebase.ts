@@ -20,6 +20,10 @@ export function isFirebaseConfigured(): boolean {
   )
 }
 
+export function getFirebaseProjectId(): string | null {
+  return firebaseConfig.projectId ?? null
+}
+
 let app: FirebaseApp | null = null
 let auth: Auth | null = null
 let db: Firestore | null = null

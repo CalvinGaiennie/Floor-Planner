@@ -39,6 +39,7 @@ export function Toolbar() {
     setPlan,
     syncError,
     refreshFromCloud,
+    firebaseProjectId,
   } = useFloorPlan()
   const { user, firebaseEnabled, signInWithGoogle, signOut, authError } = useAuth()
 
@@ -223,6 +224,15 @@ export function Toolbar() {
                 </button>
                 {user ? (
                   <>
+                    <div className="toolbar-account-meta" role="none">
+                      {user.email ?? user.displayName ?? 'Signed in'}
+                      {firebaseProjectId && (
+                        <span>
+                          {firebaseProjectId} · {planSummaries.length} plan
+                          {planSummaries.length === 1 ? '' : 's'}
+                        </span>
+                      )}
+                    </div>
                     <button
                       type="button"
                       role="menuitem"
