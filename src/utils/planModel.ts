@@ -14,6 +14,7 @@ import {
   type Wall,
 } from '../types/floorPlan'
 import { wallsShareSegment, findCoincidentWallIds, distance } from './geometry'
+import { snapFurnitureCenter } from './furniture'
 import { snapToGrid } from './imperial'
 
 function snapPoint(point: Point2D): Point2D {
@@ -901,14 +902,32 @@ export function roomsGroupCentroid(plan: FloorPlan, roomIds: string[]): Point2D 
 
 export function translateRooms(plan: FloorPlan, roomIds: string[], delta: Point2D): FloorPlan {
   const vertexIdSet = new Set<string>()
-  for (const roomId of roomIds) {
-    const room = getRoom(plan, roomId)
-    if (!room) continue
+  const rooms = roomIds
+    .map((id) => getRoom(plan, id))
+    .filter((room): room is Room => room !== undefined)
+
+  for (const room of rooms) {
     for (const vid of roomVertexIds(plan, room)) vertexIdSet.add(vid)
   }
   if (vertexIdSet.size === 0) return plan
+
+  const furniture = plan.furniture.map((item) => {
+    const inside = rooms.some((room) =>
+      isPointInsideRoom(plan, { x: item.x, y: item.y }, room),
+    )
+    if (!inside) return item
+    const snapped = snapFurnitureCenter(
+      { x: item.x + delta.x, y: item.y + delta.y },
+      item.width,
+      item.depth,
+      item.rotation,
+    )
+    return { ...item, x: snapped.x, y: snapped.y }
+  })
+
   return {
     ...plan,
+    furniture,
     vertices: plan.vertices.map((v) =>
       vertexIdSet.has(v.id)
         ? { ...v, x: snapToGrid(v.x + delta.x), y: snapToGrid(v.y + delta.y) }
