@@ -93,6 +93,11 @@ export const DEFAULT_FURNITURE_CATALOG: FurnitureCatalogEntry[] = [
   { id: 'tv-entertainment-6', label: '6′ entertainment center', category: 'tv', width: 6, depth: 2, height: 5, keywords: ['tv', 'entertainment', 'center', 'cabinet', 'living', '6'] },
   { id: 'tv-entertainment-8', label: '8′ entertainment center', category: 'tv', width: 8, depth: 2, height: 5, keywords: ['tv', 'entertainment', 'center', 'cabinet', 'living', '8'] },
   { id: 'tv-entertainment-corner', label: 'Corner entertainment center', category: 'tv', width: 5, depth: 5, height: 5, keywords: ['tv', 'entertainment', 'center', 'corner', 'cabinet', 'living'] },
+  // Miscellaneous — place then rename in the footer
+  { id: 'misc-2x2', label: 'Misc object', category: 'misc', width: 2, depth: 2, height: 3, keywords: ['misc', 'miscellaneous', 'object', 'custom', 'other', '2x2'] },
+  { id: 'misc-3x2', label: 'Misc object', category: 'misc', width: 3, depth: 2, height: 3, keywords: ['misc', 'miscellaneous', 'object', 'custom', 'other', '3x2'] },
+  { id: 'misc-4x3', label: 'Misc object', category: 'misc', width: 4, depth: 3, height: 3, keywords: ['misc', 'miscellaneous', 'object', 'custom', 'other', '4x3'] },
+  { id: 'misc-5x4', label: 'Misc object', category: 'misc', width: 5, depth: 4, height: 3, keywords: ['misc', 'miscellaneous', 'object', 'custom', 'other', '5x4', 'large'] },
 ]
 
 function cloneCatalog(entries: FurnitureCatalogEntry[]): FurnitureCatalogEntry[] {
@@ -150,4 +155,5 @@ export const FURNITURE_CATEGORY_LABELS: Record<FurnitureCatalogEntry['category']
   island: 'Islands',
   shelf: 'Shelves',
   tv: 'TVs',
+  misc: 'Miscellaneous',
 }

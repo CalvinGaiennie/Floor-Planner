@@ -73,6 +73,7 @@ import {
   isFurnitureId,
   moveFurniture,
   rotateFurniture,
+  updateFurnitureItem,
 } from '../utils/furniture'
 import {
   addDoorAtPoint,
@@ -174,6 +175,11 @@ type Action =
   | { type: 'ADD_WALL'; start: { x: number; y: number }; end: { x: number; y: number } }
   | { type: 'ADD_FURNITURE'; entry: FurnitureCatalogEntry; point: { x: number; y: number } }
   | { type: 'MOVE_FURNITURE'; id: string; point: { x: number; y: number } }
+  | {
+      type: 'UPDATE_FURNITURE'
+      id: string
+      patch: Partial<Pick<FurnitureItem, 'label' | 'width' | 'depth' | 'height'>>
+    }
   | { type: 'ADD_DOOR'; point: { x: number; y: number }; style?: DoorStyle }
   | { type: 'MOVE_DOOR'; id: string; point: { x: number; y: number } }
   | { type: 'ROTATE_ROOM'; roomId: string; deltaRadians: number }
@@ -203,6 +209,7 @@ const PLAN_UNDO_ACTIONS = new Set<Action['type']>([
   'ADD_WALL',
   'ADD_FURNITURE',
   'MOVE_FURNITURE',
+  'UPDATE_FURNITURE',
   'ADD_DOOR',
   'MOVE_DOOR',
   'ROTATE_ROOM',
@@ -471,6 +478,12 @@ function reducer(state: EditorState, action: Action): EditorState {
         plan: moveFurniture(state.plan, action.id, snapPoint(action.point)),
       }
     }
+    case 'UPDATE_FURNITURE': {
+      return {
+        ...state,
+        plan: updateFurnitureItem(state.plan, action.id, action.patch),
+      }
+    }
     case 'ADD_DOOR': {
       const walls = resolveWalls(state.plan)
       const before = state.plan.doors.length
@@ -543,6 +556,10 @@ interface FloorPlanContextValue {
   setPlacementCatalogId: (catalogId: string | null) => void
   placeFurniture: (catalogId: string, point: { x: number; y: number }) => void
   moveFurnitureOnPlan: (id: string, point: { x: number; y: number }) => void
+  updateFurniture: (
+    id: string,
+    patch: Partial<Pick<FurnitureItem, 'label' | 'width' | 'depth' | 'height'>>,
+  ) => void
   addDoor: (point: { x: number; y: number }, style?: DoorStyle) => void
   moveDoorOnPlan: (id: string, point: { x: number; y: number }) => void
   rotateSelected: (direction: 'cw' | 'ccw') => void
@@ -1346,6 +1363,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       setPlacementCatalogId,
       placeFurniture,
       moveFurnitureOnPlan,
+      updateFurniture: (id, patch) => dispatchAction({ type: 'UPDATE_FURNITURE', id, patch }),
       addDoor,
       moveDoorOnPlan,
       rotateSelected,

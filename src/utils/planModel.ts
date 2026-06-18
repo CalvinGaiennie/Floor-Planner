@@ -1,5 +1,6 @@
 import { v4 as uuid } from 'uuid'
-import { pruneDoors } from './doors'
+import { clampDoorOffset, pruneDoors } from './doors'
+import type { FurnitureItem } from '../types/furniture'
 import {
   DEFAULT_ROOM_DEPTH,
   DEFAULT_ROOM_WIDTH,
@@ -13,7 +14,7 @@ import {
   type Vertex,
   type Wall,
 } from '../types/floorPlan'
-import { wallsShareSegment, findCoincidentWallIds, distance } from './geometry'
+import { wallsShareSegment, findCoincidentWallIds, distance, wallLength } from './geometry'
 import { snapFurnitureCenter } from './furniture'
 import { snapToGrid } from './imperial'
 
@@ -887,6 +888,69 @@ export function translateRoom(plan: FloorPlan, roomId: string, delta: Point2D): 
   return translateRooms(plan, [roomId], delta)
 }
 
+/** Furniture inside closed rooms or within the room's axis-aligned bounds (open rooms). */
+export function isFurnitureInRoom(plan: FloorPlan, item: FurnitureItem, room: Room): boolean {
+  if (isPointInsideRoom(plan, { x: item.x, y: item.y }, room)) return true
+  const points = roomOutlinePoints(plan, room)
+  if (points.length === 0) return false
+  const xs = points.map((p) => p.x)
+  const ys = points.map((p) => p.y)
+  return (
+    item.x >= Math.min(...xs) &&
+    item.x <= Math.max(...xs) &&
+    item.y >= Math.min(...ys) &&
+    item.y <= Math.max(...ys)
+  )
+}
+
+function wallIdsForRooms(rooms: Room[]): Set<string> {
+  const ids = new Set<string>()
+  for (const room of rooms) {
+    for (const wallId of room.wallIds) ids.add(wallId)
+  }
+  return ids
+}
+
+function transformFurnitureInRooms(
+  plan: FloorPlan,
+  rooms: Room[],
+  mapPoint: (point: Point2D) => Point2D,
+  mapRotation?: (rotation: number) => number,
+): FurnitureItem[] {
+  return plan.furniture.map((item) => {
+    const inRoom = rooms.some((room) => isFurnitureInRoom(plan, item, room))
+    if (!inRoom) return item
+    const mapped = mapPoint({ x: item.x, y: item.y })
+    const rotation = mapRotation ? mapRotation(item.rotation) : item.rotation
+    const snapped = snapFurnitureCenter(mapped, item.width, item.depth, rotation)
+    return { ...item, x: snapped.x, y: snapped.y, rotation }
+  })
+}
+
+function scaleDoorOffsetsForWalls(
+  beforePlan: FloorPlan,
+  afterPlan: FloorPlan,
+  wallIds: Set<string>,
+): FloorPlan['doors'] {
+  return afterPlan.doors.map((door) => {
+    if (!wallIds.has(door.wallId)) return door
+    const beforeWall = getWall(beforePlan, door.wallId)
+    const afterWall = getWall(afterPlan, door.wallId)
+    if (!beforeWall || !afterWall) return door
+    const beforeResolved = resolveWall(beforePlan, beforeWall)
+    const afterResolved = resolveWall(afterPlan, afterWall)
+    if (!beforeResolved || !afterResolved) return door
+    const oldLen = wallLength(beforeResolved)
+    const newLen = wallLength(afterResolved)
+    if (oldLen < 1e-6 || Math.abs(newLen - oldLen) < 1e-6) return door
+    const scaledOffset = door.offset * (newLen / oldLen)
+    return {
+      ...door,
+      offset: clampDoorOffset(afterResolved, door.width, scaledOffset),
+    }
+  })
+}
+
 export function roomsGroupCentroid(plan: FloorPlan, roomIds: string[]): Point2D {
   const centroids = roomIds
     .map((id) => getRoom(plan, id))
@@ -911,29 +975,18 @@ export function translateRooms(plan: FloorPlan, roomIds: string[], delta: Point2
   }
   if (vertexIdSet.size === 0) return plan
 
-  const furniture = plan.furniture.map((item) => {
-    const inside = rooms.some((room) =>
-      isPointInsideRoom(plan, { x: item.x, y: item.y }, room),
-    )
-    if (!inside) return item
-    const snapped = snapFurnitureCenter(
-      { x: item.x + delta.x, y: item.y + delta.y },
-      item.width,
-      item.depth,
-      item.rotation,
-    )
-    return { ...item, x: snapped.x, y: snapped.y }
-  })
+  const furniture = transformFurnitureInRooms(plan, rooms, (p) => ({
+    x: p.x + delta.x,
+    y: p.y + delta.y,
+  }))
 
-  return {
-    ...plan,
-    furniture,
-    vertices: plan.vertices.map((v) =>
-      vertexIdSet.has(v.id)
-        ? { ...v, x: snapToGrid(v.x + delta.x), y: snapToGrid(v.y + delta.y) }
-        : v,
-    ),
-  }
+  const vertices = plan.vertices.map((v) =>
+    vertexIdSet.has(v.id)
+      ? { ...v, x: snapToGrid(v.x + delta.x), y: snapToGrid(v.y + delta.y) }
+      : v,
+  )
+
+  return { ...plan, furniture, vertices }
 }
 
 export function rotateRoom(plan: FloorPlan, roomId: string, deltaRadians: number): FloorPlan {
@@ -945,20 +998,27 @@ export function rotateRoom(plan: FloorPlan, roomId: string, deltaRadians: number
   const vertexIds = new Set(roomVertexIds(plan, room))
   const cos = Math.cos(deltaRadians)
   const sin = Math.sin(deltaRadians)
+  const rotatePoint = (p: Point2D) => {
+    const dx = p.x - centroid.x
+    const dy = p.y - centroid.y
+    return {
+      x: snapToGrid(centroid.x + dx * cos - dy * sin),
+      y: snapToGrid(centroid.y + dx * sin + dy * cos),
+    }
+  }
 
-  return sanitizePlan({
-    ...plan,
-    vertices: plan.vertices.map((v) => {
-      if (!vertexIds.has(v.id)) return v
-      const dx = v.x - centroid.x
-      const dy = v.y - centroid.y
-      return {
-        ...v,
-        x: snapToGrid(centroid.x + dx * cos - dy * sin),
-        y: snapToGrid(centroid.y + dx * sin + dy * cos),
-      }
-    }),
-  })
+  const furniture = transformFurnitureInRooms(
+    plan,
+    [room],
+    rotatePoint,
+    (rotation) => rotation + deltaRadians,
+  )
+
+  const vertices = plan.vertices.map((v) =>
+    vertexIds.has(v.id) ? { ...v, ...rotatePoint(v) } : v,
+  )
+
+  return sanitizePlan({ ...plan, furniture, vertices })
 }
 
 export function moveVertex(plan: FloorPlan, vertexId: string, point: Point2D): FloorPlan {
@@ -1248,18 +1308,21 @@ export function resizeRoomBoundingBox(
 
   const centroid = roomCentroid(plan, room)
   const vertexIds = new Set(roomVertexIds(plan, room))
-
-  return sanitizePlan({
-    ...plan,
-    vertices: plan.vertices.map((v) => {
-      if (!vertexIds.has(v.id)) return v
-      return {
-        ...v,
-        x: snapToGrid(centroid.x + (v.x - centroid.x) * sx),
-        y: snapToGrid(centroid.y + (v.y - centroid.y) * sy),
-      }
-    }),
+  const scalePoint = (p: Point2D) => ({
+    x: snapToGrid(centroid.x + (p.x - centroid.x) * sx),
+    y: snapToGrid(centroid.y + (p.y - centroid.y) * sy),
   })
+
+  const furniture = transformFurnitureInRooms(plan, [room], scalePoint)
+
+  const vertices = plan.vertices.map((v) =>
+    vertexIds.has(v.id) ? { ...v, ...scalePoint(v) } : v,
+  )
+
+  const scaledPlan = { ...plan, furniture, vertices }
+  const doors = scaleDoorOffsetsForWalls(plan, scaledPlan, wallIdsForRooms([room]))
+
+  return sanitizePlan({ ...scaledPlan, doors })
 }
 
 export function updateRoomDefaults(

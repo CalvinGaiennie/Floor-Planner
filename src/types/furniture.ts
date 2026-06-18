@@ -14,6 +14,7 @@ export type FurnitureCategory =
   | 'island'
   | 'shelf'
   | 'tv'
+  | 'misc'
 
 export interface FurnitureCatalogEntry {
   id: string

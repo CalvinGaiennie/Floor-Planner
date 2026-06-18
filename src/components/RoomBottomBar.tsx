@@ -64,6 +64,7 @@ export function RoomBottomBar() {
     deleteSelected,
     duplicateRoom,
     duplicateFurniture,
+    updateFurniture,
     rotateSelected,
     disconnectSharedWall,
     connectSharedWall,
@@ -216,11 +217,22 @@ export function RoomBottomBar() {
   }
 
   if (selectedFurniture) {
+    const miscNameEditable = selectedFurniture.category === 'misc' && !readOnlyMode
+
     return (
       <footer className="room-bottom-bar">
-        <label className="bar-field-compact bar-field-readonly">
+        <label
+          className={`bar-field-compact${miscNameEditable ? '' : ' bar-field-readonly'}`}
+        >
           <span>Name</span>
-          <input type="text" readOnly value={selectedFurniture.label} />
+          <input
+            type="text"
+            readOnly={!miscNameEditable}
+            value={selectedFurniture.label}
+            onChange={(e) =>
+              updateFurniture(selectedFurniture.id, { label: e.target.value })
+            }
+          />
         </label>
 
         <label className="bar-field-compact bar-field-readonly">
