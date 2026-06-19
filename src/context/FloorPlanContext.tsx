@@ -232,6 +232,9 @@ const CLOUD_SAVE_CHANGE_ACTIONS = new Set<Action['type']>([
   'SET_PLAN_NOTES',
 ])
 
+/** Wait for editing to pause before writing the full plan to Firestore. */
+const CLOUD_SAVE_DEBOUNCE_MS = 10_000
+
 function snapPoint(point: { x: number; y: number }) {
   return { x: snapToGrid(point.x), y: snapToGrid(point.y) }
 }
@@ -675,6 +678,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   const activePlanIdRef = useRef<string | null>(null)
   activePlanIdRef.current = activePlanId
   const masterNoteCloudSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cloudSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const skipNextCloudSaveRef = useRef(false)
   const consecutiveSaveFailuresRef = useRef(0)
   const saveGenerationRef = useRef(0)
@@ -715,12 +719,20 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         if (generation === saveGenerationRef.current) {
           consecutiveSaveFailuresRef.current += 1
-          if (options?.force || consecutiveSaveFailuresRef.current >= 2) {
+          const parsed = parseFirebaseError(err)
+          const writeQueueExhausted = parsed.code === 'resource-exhausted'
+          if (
+            options?.force ||
+            consecutiveSaveFailuresRef.current >= 2 ||
+            writeQueueExhausted
+          ) {
             reportCloudError(
               'save',
               options?.force
                 ? 'Force save failed — your plan could not be saved to the cloud.'
-                : 'Your last two changes could not be saved to the cloud.',
+                : writeQueueExhausted
+                  ? 'Cloud save is backed up — too many saves were queued. Pause editing for a moment, then try again.'
+                  : 'Your last two changes could not be saved to the cloud.',
               err,
               planId,
             )
@@ -736,17 +748,36 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
     [user, reportCloudError, resetUnsavedCloudChanges],
   )
 
+  const cancelScheduledCloudSave = useCallback(() => {
+    if (cloudSaveTimerRef.current) {
+      clearTimeout(cloudSaveTimerRef.current)
+      cloudSaveTimerRef.current = null
+    }
+  }, [])
+
+  const scheduleCloudSave = useCallback(() => {
+    cancelScheduledCloudSave()
+    cloudSaveTimerRef.current = setTimeout(() => {
+      cloudSaveTimerRef.current = null
+      const planId = activePlanIdRef.current
+      if (!planId) return
+      persistPlanToCloud(planRef.current, planId)
+    }, CLOUD_SAVE_DEBOUNCE_MS)
+  }, [cancelScheduledCloudSave, persistPlanToCloud])
+
   const flushCloudSave = useCallback(async () => {
+    cancelScheduledCloudSave()
     const planId = activePlanIdRef.current
     if (!planId) return false
     return await persistPlanToCloud(planRef.current, planId)
-  }, [persistPlanToCloud])
+  }, [cancelScheduledCloudSave, persistPlanToCloud])
 
   const forceCloudSave = useCallback(async (): Promise<boolean> => {
+    cancelScheduledCloudSave()
     const planId = activePlanIdRef.current
     if (!user || !planId || !isFirebaseConfigured()) return false
     return await persistPlanToCloud(planRef.current, planId, { force: true })
-  }, [user, persistPlanToCloud])
+  }, [user, cancelScheduledCloudSave, persistPlanToCloud])
 
   const resetUndoStacks = useCallback(() => {
     undoStackRef.current = []
@@ -928,8 +959,8 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    persistPlanToCloud(planRef.current, activePlanId)
-  }, [state.plan, user, planReady, activePlanId, planAccess, planOwnerId, persistPlanToCloud, resetUnsavedCloudChanges])
+    scheduleCloudSave()
+  }, [state.plan, user, planReady, activePlanId, planAccess, planOwnerId, scheduleCloudSave, resetUnsavedCloudChanges])
 
   useEffect(() => {
     const onPageHide = () => {
@@ -948,6 +979,7 @@ export function FloorPlanProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     return () => {
       if (masterNoteCloudSaveTimerRef.current) clearTimeout(masterNoteCloudSaveTimerRef.current)
+      if (cloudSaveTimerRef.current) clearTimeout(cloudSaveTimerRef.current)
     }
   }, [])
 

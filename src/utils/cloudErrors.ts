@@ -117,6 +117,10 @@ export function buildAlertDiagnostics(params: {
     hints.push('Firestore denied this request. Check security rules for your Firebase project.')
   } else if (params.firebaseCode === 'unavailable') {
     hints.push('Firebase could not be reached. Try again in a moment.')
+  } else if (params.firebaseCode === 'resource-exhausted') {
+    hints.push(
+      'Too many cloud writes were queued at once. Stop editing for a few seconds so pending saves can finish, then make another small change or use Force save now.',
+    )
   } else if (params.operation === 'missing-plan') {
     hints.push('The plan may have been deleted elsewhere. Pick another plan or create a new one.')
   } else if (params.operation === 'save') {
