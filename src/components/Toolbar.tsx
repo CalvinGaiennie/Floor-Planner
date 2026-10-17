@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom'
 import { useAuth } from '../context/AuthContext'
 import { useFloorPlan } from '../context/FloorPlanContext'
 import { exportPlanJson, importPlanJson } from '../utils/storage'
+import type { Floor } from '../types/floorPlan'
 import { requestView3dPointerLock } from '../utils/view3dPointerLock'
 import type { Tool, ViewMode } from '../types/floorPlan'
 
@@ -37,6 +38,9 @@ export function Toolbar() {
     planAccess,
     planOwnerId,
     readOnlyMode,
+    floors,
+    activeFloorIndex,
+    buildSavePlan,
     setTool,
     setViewMode,
     createNewPlan,
@@ -94,7 +98,10 @@ export function Toolbar() {
     <header className="toolbar">
       <div className="toolbar-brand">
         <h1>Floor Planner</h1>
-        <span className="toolbar-subtitle">Imperial · Single floor</span>
+        <span className="toolbar-subtitle">
+          Imperial · {floors[activeFloorIndex]?.label ?? 'Floor 1'}
+          {floors.length > 1 ? ` of ${floors.length}` : ''}
+        </span>
       </div>
 
       <div className="toolbar-group toolbar-plans">
@@ -249,7 +256,7 @@ export function Toolbar() {
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    exportPlanJson(state.plan)
+                    exportPlanJson(state.plan, floors)
                     setAccountMenuOpen(false)
                   }}
                 >
@@ -305,7 +312,7 @@ export function Toolbar() {
         )}
         {!firebaseEnabled && (
           <>
-            <button type="button" onClick={() => exportPlanJson(state.plan)}>
+            <button type="button" onClick={() => exportPlanJson(state.plan, floors)}>
               Export
             </button>
             <button type="button" onClick={() => fileRef.current?.click()}>

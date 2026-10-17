@@ -1,16 +1,18 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Sky } from '@react-three/drei'
-import { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { PointerLockControls as PointerLockControlsImpl } from 'three-stdlib'
 import { requestView3dPointerLock } from '../utils/view3dPointerLock'
 import { useFloorPlan } from '../context/FloorPlanContext'
-import type { Door, Wall } from '../types/floorPlan'
-import type { FurnitureCategory, FurnitureItem } from '../types/furniture'
+import { resolveWalls } from '../utils/planModel'
+import { planFromFloor, DEFAULT_WALL_HEIGHT, type Floor, type Door, type Wall } from '../types/floorPlan'
+import type { FurnitureItem } from '../types/furniture'
 import { pointOnWall, wallAngle } from '../utils/geometry'
 import { wallSolidSegments } from '../utils/doors'
 import { WORKSPACE_SIZE } from '../utils/workspace'
 import { WorkspaceAlerts } from './WorkspaceAlerts'
+import { FurnitureMesh } from './FurnitureMeshes'
 
 function walkSpawnFromWalls(walls: Wall[]): THREE.Vector3 {
   if (walls.length === 0) {
@@ -38,11 +40,15 @@ function WallMesh({
   startOffset,
   endOffset,
   selected,
+  yOffset = 0,
+  opacity = 1,
 }: {
   wall: Wall
   startOffset: number
   endOffset: number
   selected: boolean
+  yOffset?: number
+  opacity?: number
 }) {
   const len = endOffset - startOffset
   if (len <= 0.05) return null
@@ -54,61 +60,136 @@ function WallMesh({
   const angle = wallAngle(wall)
 
   return (
-    <mesh position={[midX, wall.height / 2, midZ]} rotation={[0, -angle, 0]} castShadow receiveShadow>
-      <boxGeometry args={[len, wall.height, wall.thickness]} />
-      <meshStandardMaterial color={selected ? '#64748b' : '#e5e7eb'} />
-    </mesh>
-  )
-}
-
-const FURNITURE_3D_COLORS: Record<FurnitureCategory, string> = {
-  bed: '#d97706',
-  sofa: '#818cf8',
-  chair: '#34d399',
-  table: '#b45309',
-  armchair: '#fb923c',
-  sink: '#22d3ee',
-  toilet: '#c4b5fd',
-  shower: '#2dd4bf',
-  bathtub: '#60a5fa',
-  counter: '#a8a29e',
-  fridge: '#94a3b8',
-  stove: '#f87171',
-  island: '#facc15',
-  shelf: '#c084fc',
-  tv: '#475569',
-  misc: '#94a3b8',
-}
-
-function FurnitureMesh({ item, selected }: { item: FurnitureItem; selected: boolean }) {
-  return (
     <mesh
-      position={[item.x, item.height / 2, item.y]}
-      rotation={[0, -item.rotation, 0]}
+      position={[midX, yOffset + wall.height / 2, midZ]}
+      rotation={[0, -angle, 0]}
       castShadow
       receiveShadow
     >
-      <boxGeometry args={[item.width, item.height, item.depth]} />
-      <meshStandardMaterial color={selected ? '#64748b' : FURNITURE_3D_COLORS[item.category]} />
+      <boxGeometry args={[len, wall.height, wall.thickness]} />
+      <meshStandardMaterial
+        color={selected ? '#64748b' : '#e5e7eb'}
+        transparent={opacity < 1}
+        opacity={opacity}
+      />
     </mesh>
   )
 }
 
-function SceneContent({
+function FloorSlab({
+  yOffset,
+  workspaceWidth,
+  workspaceHeight,
+  opacity = 1,
+}: {
+  yOffset: number
+  workspaceWidth: number
+  workspaceHeight: number
+  opacity?: number
+}) {
+  return (
+    <mesh
+      rotation={[-Math.PI / 2, 0, 0]}
+      receiveShadow
+      position={[workspaceWidth / 2, yOffset, workspaceHeight / 2]}
+    >
+      <planeGeometry args={[workspaceWidth, workspaceHeight]} />
+      <meshStandardMaterial
+        color="#f1f5f9"
+        transparent={opacity < 1}
+        opacity={opacity}
+      />
+    </mesh>
+  )
+}
+
+function FloorLevelContent({
   walls,
   doors,
   furniture,
-  workspaceWidth,
-  workspaceHeight,
   selectedId,
+  yOffset,
+  opacity = 1,
+  isActive,
 }: {
   walls: Wall[]
   doors: Door[]
   furniture: FurnitureItem[]
+  selectedId: string | null
+  yOffset: number
+  opacity?: number
+  isActive: boolean
+}) {
+  return (
+    <>
+      {walls.map((wall) => {
+        const segments = wallSolidSegments(wall, doors)
+        return segments.map((segment, index) => (
+          <WallMesh
+            key={`${wall.id}-${index}`}
+            wall={wall}
+            startOffset={segment.start}
+            endOffset={segment.end}
+            selected={isActive && wall.id === selectedId}
+            yOffset={yOffset}
+            opacity={opacity}
+          />
+        ))
+      })}
+
+      {furniture.map((item) => (
+        <FurnitureMesh
+          key={item.id}
+          item={item}
+          selected={isActive && item.id === selectedId}
+          yOffset={yOffset}
+          opacity={opacity}
+        />
+      ))}
+    </>
+  )
+}
+
+function maxWallHeightForFloor(floor: Floor): number {
+  if (floor.walls.length === 0) return DEFAULT_WALL_HEIGHT
+  return Math.max(...floor.walls.map((w) => w.height))
+}
+
+function SceneContent({
+  floors,
+  activeFloorIndex,
+  workspaceWidth,
+  workspaceHeight,
+  selectedId,
+}: {
+  floors: Floor[]
+  activeFloorIndex: number
   workspaceWidth: number
   workspaceHeight: number
   selectedId: string | null
 }) {
+  const floorData = useMemo(() => {
+    const offsets: number[] = []
+    floors.reduce((acc, floor) => {
+      offsets.push(acc)
+      return acc + maxWallHeightForFloor(floor) + 0.3
+    }, 0)
+
+    return floors.map((floor, i) => {
+      const tempPlan = planFromFloor(floor, '', '')
+      const walls = resolveWalls(tempPlan)
+      return {
+        floor,
+        walls,
+        doors: floor.doors,
+        furniture: floor.furniture,
+        yOffset: offsets[i],
+        isActive: i === activeFloorIndex,
+        opacity: i === activeFloorIndex ? 1 : 0.25,
+      }
+    })
+  }, [floors, activeFloorIndex])
+
   return (
     <>
       <Sky sunPosition={[100, 40, 100]} />
@@ -120,36 +201,36 @@ function SceneContent({
         shadow-mapSize={[2048, 2048]}
       />
 
-      <mesh
-        rotation={[-Math.PI / 2, 0, 0]}
-        receiveShadow
-        position={[workspaceWidth / 2, 0, workspaceHeight / 2]}
-      >
-        <planeGeometry args={[workspaceWidth, workspaceHeight]} />
-        <meshStandardMaterial color="#f1f5f9" />
-      </mesh>
+      {floorData.map((fd, i) => (
+        <group key={i}>
+          <FloorSlab
+            yOffset={fd.yOffset}
+            workspaceWidth={workspaceWidth}
+            workspaceHeight={workspaceHeight}
+            opacity={fd.opacity}
+          />
+          {fd.yOffset > 0 && (
+            <gridHelper
+              args={[workspaceWidth, workspaceWidth, '#cbd5e1', '#e2e8f0']}
+              position={[workspaceWidth / 2, fd.yOffset + 0.01, workspaceHeight / 2]}
+            />
+          )}
+          <FloorLevelContent
+            walls={fd.walls}
+            doors={fd.doors}
+            furniture={fd.furniture}
+            selectedId={selectedId}
+            yOffset={fd.yOffset}
+            opacity={fd.opacity}
+            isActive={fd.isActive}
+          />
+        </group>
+      ))}
 
       <gridHelper
         args={[workspaceWidth, workspaceWidth, '#cbd5e1', '#e2e8f0']}
         position={[workspaceWidth / 2, 0.01, workspaceHeight / 2]}
       />
-
-      {walls.map((wall) => {
-        const segments = wallSolidSegments(wall, doors)
-        return segments.map((segment, index) => (
-          <WallMesh
-            key={`${wall.id}-${index}`}
-            wall={wall}
-            startOffset={segment.start}
-            endOffset={segment.end}
-            selected={wall.id === selectedId}
-          />
-        ))
-      })}
-
-      {furniture.map((item) => (
-        <FurnitureMesh key={item.id} item={item} selected={item.id === selectedId} />
-      ))}
     </>
   )
 }
@@ -267,17 +348,17 @@ function WalkControls({ walls, active }: { walls: Wall[]; active: boolean }) {
 }
 
 function Scene({
-  walls,
-  doors,
-  furniture,
+  floors,
+  activeFloorIndex,
+  activeWalls,
   workspaceWidth,
   workspaceHeight,
   selectedId,
   active,
 }: {
-  walls: Wall[]
-  doors: Door[]
-  furniture: FurnitureItem[]
+  floors: Floor[]
+  activeFloorIndex: number
+  activeWalls: Wall[]
   workspaceWidth: number
   workspaceHeight: number
   selectedId: string | null
@@ -285,11 +366,10 @@ function Scene({
 }) {
   return (
     <>
-      <WalkControls walls={walls} active={active} />
+      <WalkControls walls={activeWalls} active={active} />
       <SceneContent
-        walls={walls}
-        doors={doors}
-        furniture={furniture}
+        floors={floors}
+        activeFloorIndex={activeFloorIndex}
         workspaceWidth={workspaceWidth}
         workspaceHeight={workspaceHeight}
         selectedId={selectedId}
@@ -299,7 +379,7 @@ function Scene({
 }
 
 export function View3D() {
-  const { state, planWalls, setViewMode } = useFloorPlan()
+  const { state, planWalls, setViewMode, floors, activeFloorIndex } = useFloorPlan()
   const { selectedId, viewMode } = state
   const active = viewMode === 'view3d'
   const [pointerLocked, setPointerLocked] = useState(false)
@@ -331,6 +411,7 @@ export function View3D() {
         <h2>3D View</h2>
         <span className="panel-meta">
           WASD move · Space up · Shift down · Esc → 2D
+          {floors.length > 1 ? ` · ${floors.length} floors` : ''}
         </span>
       </div>
       <div className="view3d-canvas-wrap" id="view3d-canvas-wrap">
@@ -338,9 +419,9 @@ export function View3D() {
         <Canvas shadows camera={{ position: [15, 12, 15], fov: 50 }}>
           <Suspense fallback={null}>
             <Scene
-              walls={planWalls}
-              doors={state.plan.doors}
-              furniture={state.plan.furniture}
+              floors={floors}
+              activeFloorIndex={activeFloorIndex}
+              activeWalls={planWalls}
               workspaceWidth={WORKSPACE_SIZE.width}
               workspaceHeight={WORKSPACE_SIZE.height}
               selectedId={selectedId}

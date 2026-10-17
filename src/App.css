@@ -1334,6 +1334,67 @@ body.project-notes-resizing {
   cursor: pointer;
 }
 
+.floor-tabs-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 14px;
+  border-bottom: 1px solid #1e293b;
+  background: #111827;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.floor-tab {
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 4px 12px;
+  background: #1e293b;
+  color: #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.floor-tab:hover {
+  background: #334155;
+  color: #e2e8f0;
+}
+
+.floor-tab.active {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #fff;
+}
+
+.floor-tab-add {
+  color: #64748b;
+  font-size: 0.9rem;
+  padding: 3px 10px;
+}
+
+.floor-tab-add:hover {
+  color: #34d399;
+  border-color: #16a34a;
+  background: #14532d;
+}
+
+.floor-tab-delete {
+  color: #f87171;
+  font-size: 0.9rem;
+  padding: 3px 8px;
+  border-color: #7f1d1d;
+  background: transparent;
+}
+
+.floor-tab-delete:hover {
+  background: #7f1d1d;
+  color: #fecaca;
+}
+
 .plan-canvas-area {
   flex: 1;
   min-height: 0;

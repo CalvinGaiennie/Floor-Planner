@@ -61,6 +61,15 @@ export interface Door {
   style?: DoorStyle
 }
 
+export interface Floor {
+  label: string
+  vertices: Vertex[]
+  walls: PlanWall[]
+  rooms: Room[]
+  furniture: FurnitureItem[]
+  doors: Door[]
+}
+
 export interface FloorPlan {
   name: string
   notes: string
@@ -69,6 +78,8 @@ export interface FloorPlan {
   rooms: Room[]
   furniture: FurnitureItem[]
   doors: Door[]
+  /** Multi-floor data — canonical when present. */
+  floors?: Floor[]
 }
 
 export const DEFAULT_WALL_HEIGHT = 8
@@ -83,6 +94,33 @@ export const MAX_WALL_LENGTH = 80
 export const DEFAULT_DOOR_WIDTH = 3
 export const DEFAULT_DOUBLE_DOOR_WIDTH = 3
 export const DEFAULT_DOOR_HEIGHT = 6.67
+
+export function createEmptyFloor(label = 'Floor 1'): Floor {
+  return { label, vertices: [], walls: [], rooms: [], furniture: [], doors: [] }
+}
+
+export function floorFromPlan(plan: FloorPlan, label = 'Floor 1'): Floor {
+  return {
+    label,
+    vertices: plan.vertices,
+    walls: plan.walls,
+    rooms: plan.rooms,
+    furniture: plan.furniture,
+    doors: plan.doors,
+  }
+}
+
+export function planFromFloor(floor: Floor, name: string, notes: string): FloorPlan {
+  return {
+    name,
+    notes,
+    vertices: floor.vertices,
+    walls: floor.walls,
+    rooms: floor.rooms,
+    furniture: floor.furniture,
+    doors: floor.doors,
+  }
+}
 
 export function createEmptyPlan(name = 'My Home'): FloorPlan {
   return {

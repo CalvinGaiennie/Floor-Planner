@@ -4,6 +4,7 @@ import {
   DEFAULT_ROOM_WIDTH,
   DEFAULT_WALL_HEIGHT,
   DEFAULT_WALL_THICKNESS,
+  type Floor,
   type FloorPlan,
   type Point2D,
   type Room,
@@ -36,6 +37,7 @@ type LegacyPlan = {
   openings?: unknown[]
   furniture?: unknown[]
   staircases?: unknown[]
+  floors?: unknown[]
 }
 
 function isNewFormatRoom(room: LegacyRectangleRoom): boolean {
@@ -54,11 +56,22 @@ function withFurniture(plan: FloorPlan, raw: LegacyPlan): FloorPlan {
   return withDoors({ ...plan, furniture: normalizeFurnitureList(raw.furniture) }, raw)
 }
 
-function normalizePlan(raw: LegacyPlan): FloorPlan {
-  const base = withFurniture(createEmptyPlan(raw.name ?? 'My Home'), raw)
-  if (typeof raw.notes === 'string') {
-    base.notes = raw.notes
+function normalizeFloorData(rawFloor: Record<string, unknown>): Floor {
+  const label = typeof rawFloor.label === 'string' ? rawFloor.label : 'Floor'
+  const floorAsPlan: LegacyPlan = {
+    vertices: rawFloor.vertices as unknown[] | undefined,
+    walls: rawFloor.walls as unknown[] | undefined,
+    rooms: rawFloor.rooms as LegacyRectangleRoom[] | undefined,
+    doors: rawFloor.doors as unknown[] | undefined,
+    openings: rawFloor.openings as unknown[] | undefined,
+    furniture: rawFloor.furniture as unknown[] | undefined,
   }
+  const plan = normalizeSingleFloorPlan(floorAsPlan, 'tmp')
+  return { label, vertices: plan.vertices, walls: plan.walls, rooms: plan.rooms, furniture: plan.furniture, doors: plan.doors }
+}
+
+function normalizeSingleFloorPlan(raw: LegacyPlan, name: string): FloorPlan {
+  const base = withFurniture(createEmptyPlan(name), raw)
   const hasWallGraph = Array.isArray(raw.vertices) && Array.isArray(raw.walls)
 
   if (
@@ -68,8 +81,8 @@ function normalizePlan(raw: LegacyPlan): FloorPlan {
     raw.rooms.every(isNewFormatRoom)
   ) {
     return sanitizePlan({
-      name: raw.name ?? base.name,
-      notes: typeof raw.notes === 'string' ? raw.notes : base.notes,
+      name: base.name,
+      notes: base.notes,
       vertices: raw.vertices as FloorPlan['vertices'],
       walls: raw.walls as FloorPlan['walls'],
       rooms: raw.rooms as Room[],
@@ -80,13 +93,12 @@ function normalizePlan(raw: LegacyPlan): FloorPlan {
 
   let plan = base
 
-  // Load wall-graph rooms even when mixed with legacy rooms or the fast path failed.
   if (hasWallGraph && Array.isArray(raw.rooms)) {
     const wallGraphRooms = raw.rooms.filter(isNewFormatRoom) as Room[]
     if (wallGraphRooms.length > 0) {
       plan = sanitizePlan({
-        name: raw.name ?? base.name,
-        notes: typeof raw.notes === 'string' ? raw.notes : base.notes,
+        name: base.name,
+        notes: base.notes,
         vertices: raw.vertices as FloorPlan['vertices'],
         walls: raw.walls as FloorPlan['walls'],
         rooms: wallGraphRooms,
@@ -137,6 +149,32 @@ function normalizePlan(raw: LegacyPlan): FloorPlan {
   return sanitizePlan(plan)
 }
 
+function normalizePlan(raw: LegacyPlan): FloorPlan {
+  // Multi-floor format: { name, notes, floors: [...] }
+  if (Array.isArray(raw.floors) && raw.floors.length > 0) {
+    const floors = raw.floors
+      .filter((f): f is Record<string, unknown> => f !== null && typeof f === 'object')
+      .map(normalizeFloorData)
+
+    if (floors.length > 0) {
+      const firstFloor = floors[0]
+      return {
+        name: raw.name ?? 'My Home',
+        notes: typeof raw.notes === 'string' ? raw.notes : '',
+        vertices: firstFloor.vertices,
+        walls: firstFloor.walls,
+        rooms: firstFloor.rooms,
+        furniture: firstFloor.furniture,
+        doors: firstFloor.doors,
+        floors,
+      }
+    }
+  }
+
+  // Legacy single-floor format
+  return normalizeSingleFloorPlan(raw, raw.name ?? 'My Home')
+}
+
 const MASTER_NOTE_KEY = 'floor-planner-master-note'
 
 export function loadMasterNoteLocal(): string {
@@ -166,8 +204,11 @@ export function nextDefaultPlanName(existing: PlanSummary[]): string {
   return `Home ${i}`
 }
 
-export function exportPlanJson(plan: FloorPlan): void {
-  const blob = new Blob([JSON.stringify(plan, null, 2)], { type: 'application/json' })
+export function exportPlanJson(plan: FloorPlan, floors?: Floor[]): void {
+  const saveDoc = floors
+    ? { name: plan.name, notes: plan.notes, floors }
+    : plan
+  const blob = new Blob([JSON.stringify(saveDoc, null, 2)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const anchor = document.createElement('a')
   anchor.href = url

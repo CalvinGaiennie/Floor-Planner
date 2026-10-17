@@ -134,6 +134,12 @@ export function FloorPlanEditor() {
     moveDoorOnPlan,
     furnitureCatalog,
     rotateSelected,
+    floors,
+    activeFloorIndex,
+    addFloor,
+    deleteFloor,
+    switchFloor,
+    renameFloor,
   } = useFloorPlan()
 
   const { plan, tool, selectedId } = state
@@ -1183,6 +1189,43 @@ export function FloorPlanEditor() {
             </button>
           </div>
         </div>
+      </div>
+      <div className="floor-tabs-bar">
+        {floors.map((floor, i) => (
+          <button
+            key={i}
+            type="button"
+            className={`floor-tab${i === activeFloorIndex ? ' active' : ''}`}
+            onClick={() => switchFloor(i)}
+            onDoubleClick={() => {
+              const label = prompt('Rename floor:', floor.label)
+              if (label) renameFloor(i, label)
+            }}
+            title={`Switch to ${floor.label}${i === activeFloorIndex ? ' (active)' : ''}`}
+          >
+            {floor.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="floor-tab floor-tab-add"
+          onClick={addFloor}
+          disabled={readOnlyMode}
+          title="Add a new floor"
+        >
+          +
+        </button>
+        {floors.length > 1 && (
+          <button
+            type="button"
+            className="floor-tab floor-tab-delete"
+            onClick={() => deleteFloor(activeFloorIndex)}
+            disabled={readOnlyMode}
+            title={`Delete ${floors[activeFloorIndex]?.label}`}
+          >
+            ×
+          </button>
+        )}
       </div>
       <div className="plan-canvas-area" ref={containerRef}>
         <WorkspaceAlerts />
